@@ -1,0 +1,283 @@
+// ============================================
+// DocMan Full Deployment Pipeline
+// Jenkins Pipeline Script
+// ============================================
+
+pipeline {
+    agent any
+
+    environment {
+        REGISTRY = 'docker.io'
+        BACKEND_IMAGE = 'docman-backend'
+        FRONTEND_IMAGE = 'docman-frontend'
+        BACKEND_TAG = "${env.BUILD_NUMBER}"
+        FRONTEND_TAG = "${env.BUILD_NUMBER}"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out source code...'
+                checkout scm
+            }
+        }
+
+        stage('Prepare') {
+            steps {
+                echo 'Preparing build environment...'
+                sh '''
+                    mkdir -p docker-compose-files
+                    echo "Build ID: ${BUILD_NUMBER}" > build.info
+                '''
+            }
+        }
+
+        stage('Middleware Installation') {
+            steps {
+                echo 'Installing middleware services...'
+                sh '''
+                    # Docker Compose for Middleware
+                    cat > docker-compose-middleware.yml << 'COMPOSE_EOF'
+version: '3.8'
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: docman-mysql
+    restart: always
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: docman123
+      MYSQL_DATABASE: docman
+      MYSQL_USER: docman
+      MYSQL_PASSWORD: docman123
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: docman-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  elasticsearch:
+    image: elasticsearch:8.12.0
+    container_name: docman-elasticsearch
+    restart: always
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: docman-minio
+    restart: always
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+volumes:
+  mysql-data:
+  redis-data:
+  es-data:
+  minio-data:
+COMPOSE_EOF
+
+                    docker compose -f docker-compose-middleware.yml up -d
+                    echo "Waiting for middleware to be ready..."
+                    sleep 30
+                '''
+            }
+        }
+
+        stage('Backend Build') {
+            steps {
+                echo 'Building backend...'
+                sh '''
+                    mvn clean package -Pstandalone -DskipTests -q
+                    docker build -t ${BACKEND_IMAGE}:${BACKEND_TAG} -f docker/Dockerfile-backend .
+                    docker tag ${BACKEND_IMAGE}:${BACKEND_TAG} ${BACKEND_IMAGE}:latest
+                '''
+            }
+        }
+
+        stage('Backend Deploy') {
+            steps {
+                echo 'Deploying backend...'
+                sh '''
+                    # Stop existing backend
+                    docker stop docman-backend || true
+                    docker rm docman-backend || true
+
+                    # Run backend container
+                    docker run -d \
+                      --name docman-backend \
+                      --restart always \
+                      -p 8080-8091:8080-8091 \
+                      -e SPRING_PROFILES_ACTIVE=standalone \
+                      -e MYSQL_HOST=${MYSQL_HOST:192.168.145.252} \
+                      -e REDIS_HOST=${REDIS_HOST:192.168.145.252} \
+                      -e MINIO_ENDPOINT=http://${MINIO_HOST:192.168.145.252}:9000 \
+                      -e ES_HOST=${ES_HOST:192.168.145.252} \
+                      -e NACOS_HOST=${NACOS_HOST:192.168.145.252} \
+                      --link docman-mysql \
+                      --link docman-redis \
+                      --link docman-elasticsearch \
+                      --link docman-minio \
+                      ${BACKEND_IMAGE}:${BACKEND_TAG}
+
+                    echo "Waiting for backend to start..."
+                    sleep 20
+                '''
+            }
+        }
+
+        stage('Frontend Build') {
+            steps {
+                echo 'Building frontend...'
+                sh '''
+                    cd docman-frontend
+                    npm install --legacy-peer-deps
+                    npm run build
+                    cd ..
+                '''
+            }
+        }
+
+        stage('Frontend Deploy') {
+            steps {
+                echo 'Deploying frontend...'
+                sh '''
+                    # Build frontend Docker image
+                    docker build -t ${FRONTEND_IMAGE}:${FRONTEND_TAG} -f docker/Dockerfile-frontend .
+                    docker tag ${FRONTEND_IMAGE}:${FRONTEND_TAG} ${FRONTEND_IMAGE}:latest
+
+                    # Stop existing frontend
+                    docker stop docman-frontend || true
+                    docker rm docman-frontend || true
+
+                    # Run frontend container
+                    docker run -d \
+                      --name docman-frontend \
+                      -p 3000:3000 \
+                      --restart always \
+                      -e NEXT_PUBLIC_API_BASE=http://${DEPLOY_HOST:localhost}:8080 \
+                      ${FRONTEND_IMAGE}:${FRONTEND_TAG}
+                '''
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                echo 'Performing health checks...'
+                sh '''
+                    echo "Checking backend health..."
+                    curl -sf http://localhost:8080/actuator/health || exit 1
+
+                    echo "Checking frontend..."
+                    curl -sf http://localhost:3000 || exit 1
+
+                    echo "All health checks passed!"
+                '''
+            }
+        }
+
+        stage('Status') {
+            steps {
+                echo 'Deployment completed!'
+                sh '''
+                    echo "============================================"
+                    echo "DocMan Deployment Summary"
+                    echo "============================================"
+                    echo "Build Number: ${BUILD_NUMBER}"
+                    echo "Backend Image: ${BACKEND_IMAGE}:${BACKEND_TAG}"
+                    echo "Frontend Image: ${FRONTEND_IMAGE}:${FRONTEND_TAG}"
+                    echo ""
+                    echo "Running Containers:"
+                    docker ps | grep docman || echo "No docman containers running"
+                    echo "============================================"
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Deployment completed successfully!'
+            emailext (
+                subject: "SUCCESS: DocMan Deployment #${env.BUILD_NUMBER}",
+                body: """
+                    DocMan deployment completed successfully!
+
+                    Build Number: ${env.BUILD_NUMBER}
+                    Backend: ${BACKEND_IMAGE}:${BACKEND_TAG}
+                    Frontend: ${FRONTEND_IMAGE}:${FRONTEND_TAG}
+
+                    Services:
+                    - Frontend: http://localhost:3000
+                    - Gateway: http://localhost:8080
+                    - MySQL: localhost:3306
+                    - Redis: localhost:6379
+                    - Elasticsearch: localhost:9200
+                    - MinIO: localhost:9000
+                """,
+                to: "infodba@example.com"
+            )
+        }
+        failure {
+            echo 'Deployment failed!'
+            emailext (
+                subject: "FAILURE: DocMan Deployment #${env.BUILD_NUMBER}",
+                body: """
+                    DocMan deployment failed!
+
+                    Build Number: ${env.BUILD_NUMBER}
+                    Please check the build logs for details.
+                """,
+                to: "infodba@example.com"
+            )
+        }
+        always {
+            echo 'Cleaning up...'
+            sh '''
+                docker system prune -f || true
+            '''
+        }
+    }
+}
