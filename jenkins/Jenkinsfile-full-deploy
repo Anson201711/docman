@@ -203,18 +203,365 @@ COMPOSE_EOF
             }
         }
 
-        stage('Health Check') {
+        stage('Smoke Test - Middleware') {
             steps {
-                echo 'Performing health checks...'
-                sh '''
-                    echo "Checking backend health..."
-                    curl -sf http://localhost:8080/actuator/health || exit 1
+                echo 'Running middleware smoke tests...'
+                script {
+                    def testsPassed = true
+                    def testResults = []
 
-                    echo "Checking frontend..."
-                    curl -sf http://localhost:3000 || exit 1
+                    // Test MySQL
+                    try {
+                        def mysqlStatus = sh(script: "docker exec docman-mysql mysqladmin ping -h localhost -u root -pdocman123 2>/dev/null | grep -q 'mysqld is alive' && echo 'OK' || echo 'FAIL'", returnStdout: true).trim()
+                        if (mysqlStatus == 'OK') {
+                            testResults << "✓ MySQL: Connection successful"
+                        } else {
+                            testResults << "✗ MySQL: Connection failed"
+                            testsPassed = false
+                        }
+                    } catch (Exception e) {
+                        testResults << "✗ MySQL: ${e.message}"
+                        testsPassed = false
+                    }
 
-                    echo "All health checks passed!"
-                '''
+                    // Test Redis
+                    try {
+                        def redisStatus = sh(script: "docker exec docman-redis redis-cli -a '' ping 2>/dev/null | grep -q PONG && echo 'OK' || echo 'FAIL'", returnStdout: true).trim()
+                        if (redisStatus == 'OK') {
+                            testResults << "✓ Redis: Connection successful"
+                        } else {
+                            testResults << "✗ Redis: Connection failed"
+                            testsPassed = false
+                        }
+                    } catch (Exception e) {
+                        testResults << "✗ Redis: ${e.message}"
+                        testsPassed = false
+                    }
+
+                    // Test Elasticsearch
+                    try {
+                        def esStatus = sh(script: "curl -sf http://localhost:9200/_cluster/health 2>/dev/null | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"' && echo 'OK' || echo 'FAIL'", returnStdout: true).trim()
+                        if (esStatus == 'OK') {
+                            testResults << "✓ Elasticsearch: Cluster healthy"
+                        } else {
+                            testResults << "✗ Elasticsearch: Cluster unhealthy"
+                            testsPassed = false
+                        }
+                    } catch (Exception e) {
+                        testResults << "✗ Elasticsearch: ${e.message}"
+                        testsPassed = false
+                    }
+
+                    // Test MinIO
+                    try {
+                        def minioStatus = sh(script: "curl -sf http://localhost:9000/minio/health/live 2>/dev/null && echo 'OK' || echo 'FAIL'", returnStdout: true).trim()
+                        if (minioStatus == 'OK') {
+                            testResults << "✓ MinIO: Health check passed"
+                        } else {
+                            testResults << "✗ MinIO: Health check failed"
+                            testsPassed = false
+                        }
+                    } catch (Exception e) {
+                        testResults << "✗ MinIO: ${e.message}"
+                        testsPassed = false
+                    }
+
+                    // Save test results
+                    writeFile file: 'smoke-test-middleware.txt', text: testResults.join('\n')
+                    echo testResults.join('\n')
+
+                    if (!testsPassed) {
+                        error("Middleware smoke tests failed!")
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Test - Backend API') {
+            steps {
+                echo 'Running backend API smoke tests...'
+                script {
+                    def testsPassed = true
+                    def testResults = []
+                    def reportFile = 'smoke-test-backend.txt'
+
+                    // Wait for backend to be ready
+                    def maxAttempts = 30
+                    def attempt = 0
+                    def backendReady = false
+
+                    while (attempt < maxAttempts && !backendReady) {
+                        attempt++
+                        try {
+                            def healthStatus = sh(script: "curl -sf http://localhost:8080/actuator/health 2>/dev/null && echo 'OK' || echo 'FAIL'", returnStdout: true).trim()
+                            if (healthStatus == 'OK') {
+                                backendReady = true
+                                testResults << "✓ Backend: Health endpoint responding"
+                            }
+                        } catch (Exception e) {
+                            echo "Waiting for backend... (${attempt}/${maxAttempts})"
+                            sleep 5
+                        }
+                    }
+
+                    if (!backendReady) {
+                        testResults << "✗ Backend: Health endpoint not responding"
+                        testsPassed = false
+                    }
+
+                    // Test Gateway API
+                    try {
+                        def gatewayStatus = sh(script: "curl -sf -o /dev/null -w '%{http_code}' http://localhost:8080/gateway/ 2>/dev/null || echo 'FAIL'", returnStdout: true).trim()
+                        if (gatewayStatus in ['200', '404', '401']) {
+                            testResults << "✓ Gateway: API responding (HTTP ${gatewayStatus})"
+                        } else {
+                            testResults << "✗ Gateway: API not accessible (HTTP ${gatewayStatus})"
+                            testsPassed = false
+                        }
+                    } catch (Exception e) {
+                        testResults << "✗ Gateway: ${e.message}"
+                        testsPassed = false
+                    }
+
+                    // Test User Service API
+                    try {
+                        def userApiStatus = sh(script: "curl -sf -o /dev/null -w '%{http_code}' http://localhost:8080/api/user/health 2>/dev/null || echo 'FAIL'", returnStdout: true).trim()
+                        if (userApiStatus in ['200', '404', '401']) {
+                            testResults << "✓ User API: Responding (HTTP ${userApiStatus})"
+                        } else {
+                            testResults << "✗ User API: Not accessible (HTTP ${userApiStatus})"
+                            testsPassed = false
+                        }
+                    } catch (Exception e) {
+                        testResults << "✗ User API: ${e.message}"
+                        testsPassed = false
+                    }
+
+                    // Test Document Service API
+                    try {
+                        def docApiStatus = sh(script: "curl -sf -o /dev/null -w '%{http_code}' http://localhost:8080/api/document/health 2>/dev/null || echo 'FAIL'", returnStdout: true).trim()
+                        if (docApiStatus in ['200', '404', '401']) {
+                            testResults << "✓ Document API: Responding (HTTP ${docApiStatus})"
+                        } else {
+                            testResults << "✗ Document API: Not accessible (HTTP ${docApiStatus})"
+                            testsPassed = false
+                        }
+                    } catch (Exception e) {
+                        testResults << "✗ Document API: ${e.message}"
+                        testsPassed = false
+                    }
+
+                    // Test Storage Service API
+                    try {
+                        def storageApiStatus = sh(script: "curl -sf -o /dev/null -w '%{http_code}' http://localhost:8080/api/storage/health 2>/dev/null || echo 'FAIL'", returnStdout: true).trim()
+                        if (storageApiStatus in ['200', '404', '401']) {
+                            testResults << "✓ Storage API: Responding (HTTP ${storageApiStatus})"
+                        } else {
+                            testResults << "✗ Storage API: Not accessible (HTTP ${storageApiStatus})"
+                            testsPassed = false
+                        }
+                    } catch (Exception e) {
+                        testResults << "✗ Storage API: ${e.message}"
+                        testsPassed = false
+                    }
+
+                    // Save test results
+                    writeFile file: reportFile, text: testResults.join('\n')
+                    echo testResults.join('\n')
+
+                    if (!testsPassed) {
+                        error("Backend API smoke tests failed!")
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Test - Frontend') {
+            steps {
+                echo 'Running frontend smoke tests...'
+                script {
+                    def testsPassed = true
+                    def testResults = []
+
+                    // Test Frontend HTTP response
+                    try {
+                        def frontendStatus = sh(script: "curl -sf -o /dev/null -w '%{http_code}' http://localhost:3000 2>/dev/null || echo 'FAIL'", returnStdout: true).trim()
+                        if (frontendStatus in ['200', '304', '301', '302']) {
+                            testResults << "✓ Frontend: HTTP ${frontendStatus} - Application responding"
+                        } else {
+                            testResults << "✗ Frontend: HTTP ${frontendStatus} - Application not accessible"
+                            testsPassed = false
+                        }
+                    } catch (Exception e) {
+                        testResults << "✗ Frontend: ${e.message}"
+                        testsPassed = false
+                    }
+
+                    // Test Frontend contains expected content
+                    try {
+                        def frontendContent = sh(script: "curl -sf http://localhost:3000 2>/dev/null | head -c 500 | grep -qi 'html\\|next\\|DOCTYPE' && echo 'OK' || echo 'FAIL'", returnStdout: true).trim()
+                        if (frontendContent == 'OK') {
+                            testResults << "✓ Frontend: HTML content valid"
+                        } else {
+                            testResults << "✗ Frontend: HTML content invalid"
+                            testsPassed = false
+                        }
+                    } catch (Exception e) {
+                        testResults << "✗ Frontend: ${e.message}"
+                        testsPassed = false
+                    }
+
+                    // Save test results
+                    writeFile file: 'smoke-test-frontend.txt', text: testResults.join('\n')
+                    echo testResults.join('\n')
+
+                    if (!testsPassed) {
+                        error("Frontend smoke tests failed!")
+                    }
+                }
+            }
+        }
+
+        stage('Generate Test Report') {
+            steps {
+                echo 'Generating smoke test report...'
+                script {
+                    def timestamp = new Date().format('yyyy-MM-dd HH:mm:ss')
+                    def report = """
+================================================================================
+                        DocMan 自动化部署冒烟测试报告
+================================================================================
+
+测试时间: ${timestamp}
+构建编号: ${env.BUILD_NUMBER}
+构建URL: ${env.BUILD_URL}
+
+--------------------------------------------------------------------------------
+                              服务健康状态
+--------------------------------------------------------------------------------
+"""
+
+                    // Add container status
+                    def containerStatus = sh(script: "docker ps --filter 'name=docman' --format \"table {{.Names}}\\t{{.Status}}\\t{{.Ports}}\" 2>/dev/null || echo 'No containers'", returnStdout: true).trim()
+                    report += "\n容器状态:\n${containerStatus}\n"
+
+                    // Add middleware test results
+                    try {
+                        def middlewareTests = readFile 'smoke-test-middleware.txt'
+                        report += "\n--------------------------------------------------------------------------------\n                              中间件服务测试\n--------------------------------------------------------------------------------\n${middlewareTests}\n"
+                    } catch (Exception e) {
+                        report += "\n--------------------------------------------------------------------------------\n                              中间件服务测试\n--------------------------------------------------------------------------------\n无法读取中间件测试结果\n"
+                    }
+
+                    // Add backend test results
+                    try {
+                        def backendTests = readFile 'smoke-test-backend.txt'
+                        report += "\n--------------------------------------------------------------------------------\n                              后端API服务测试\n--------------------------------------------------------------------------------\n${backendTests}\n"
+                    } catch (Exception e) {
+                        report += "\n--------------------------------------------------------------------------------\n                              后端API服务测试\n--------------------------------------------------------------------------------\n无法读取后端API测试结果\n"
+                    }
+
+                    // Add frontend test results
+                    try {
+                        def frontendTests = readFile 'smoke-test-frontend.txt'
+                        report += "\n--------------------------------------------------------------------------------\n                              前端应用测试\n--------------------------------------------------------------------------------\n${frontendTests}\n"
+                    } catch (Exception e) {
+                        report += "\n--------------------------------------------------------------------------------\n                              前端应用测试\n--------------------------------------------------------------------------------\n无法读取前端测试结果\n"
+                    }
+
+                    report += """
+--------------------------------------------------------------------------------
+                              部署服务地址
+--------------------------------------------------------------------------------
+  - 前端应用:     http://localhost:3000
+  - API网关:      http://localhost:8080
+  - MySQL:        localhost:3306 (root/docman123)
+  - Redis:        localhost:6379
+  - Elasticsearch: http://localhost:9200
+  - MinIO:        http://localhost:9000 (minioadmin/minioadmin)
+  - MinIO Console: http://localhost:9001
+
+================================================================================
+                              测试报告结束
+================================================================================
+"""
+
+                    // Save HTML report
+                    def htmlReport = report
+                        .replace('&', '&amp;')
+                        .replace('<', '&lt;')
+                        .replace('>', '&gt;')
+                        .replace('\n', '<br/>')
+                        .replace('================================================================================', '<hr/>')
+
+                    writeFile file: 'smoke-test-report.html', text: """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>DocMan 冒烟测试报告 - Build #${env.BUILD_NUMBER}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px; }
+        h2 { color: #555; margin-top: 30px; }
+        .success { color: #4CAF50; font-weight: bold; }
+        .failure { color: #f44336; font-weight: bold; }
+        .info { color: #2196F3; }
+        pre { background: #f5f5f5; padding: 15px; border-radius: 4px; overflow-x: auto; }
+        table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #4CAF50; color: white; }
+        tr:nth-child(even) { background-color: #f2f2f2; }
+        .timestamp { color: #888; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 DocMan 自动化部署冒烟测试报告</h1>
+        <p class="timestamp">测试时间: ${timestamp} | 构建编号: ${env.BUILD_NUMBER}</p>
+
+        <h2>📦 容器状态</h2>
+        <pre>${containerStatus}</pre>
+
+        <h2>🗄️ 中间件服务测试</h2>
+        <pre>${middlewareTests ?: 'N/A'}</pre>
+
+        <h2>🔧 后端API服务测试</h2>
+        <pre>${backendTests ?: 'N/A'}</pre>
+
+        <h2>🌐 前端应用测试</h2>
+        <pre>${frontendTests ?: 'N/A'}</pre>
+
+        <h2>🔗 服务地址</h2>
+        <table>
+            <tr><th>服务</th><th>地址</th></tr>
+            <tr><td>前端应用</td><td>http://localhost:3000</td></tr>
+            <tr><td>API网关</td><td>http://localhost:8080</td></tr>
+            <tr><td>MySQL</td><td>localhost:3306</td></tr>
+            <tr><td>Redis</td><td>localhost:6379</td></tr>
+            <tr><td>Elasticsearch</td><td>http://localhost:9200</td></tr>
+            <tr><td>MinIO</td><td>http://localhost:9000</td></tr>
+            <tr><td>MinIO Console</td><td>http://localhost:9001</td></tr>
+        </table>
+    </div>
+</body>
+</html>
+"""
+
+                    // Save text report
+                    writeFile file: 'smoke-test-report.txt', text: report
+
+                    // Display report
+                    echo "==============================================="
+                    echo "       SMOKE TEST REPORT SUMMARY"
+                    echo "==============================================="
+                    echo report
+                    echo "==============================================="
+                    echo "HTML Report saved: smoke-test-report.html"
+                    echo "Text Report saved: smoke-test-report.txt"
+                    echo "==============================================="
+                }
             }
         }
 
@@ -240,14 +587,21 @@ COMPOSE_EOF
     post {
         success {
             echo 'Deployment completed successfully!'
+            script {
+                // Archive test reports
+                archiveArtifacts artifacts: 'smoke-test-*.txt,smoke-test-*.html', allowEmptyArchive: true
+            }
             emailext (
-                subject: "SUCCESS: DocMan Deployment #${env.BUILD_NUMBER}",
+                subject: "✅ SUCCESS: DocMan Deployment #${env.BUILD_NUMBER}",
                 body: """
                     DocMan deployment completed successfully!
 
                     Build Number: ${env.BUILD_NUMBER}
+                    Build URL: ${env.BUILD_URL}
                     Backend: ${BACKEND_IMAGE}:${BACKEND_TAG}
                     Frontend: ${FRONTEND_IMAGE}:${FRONTEND_TAG}
+
+                    🧪 Smoke Test: PASSED
 
                     Services:
                     - Frontend: http://localhost:3000
@@ -256,19 +610,28 @@ COMPOSE_EOF
                     - Redis: localhost:6379
                     - Elasticsearch: localhost:9200
                     - MinIO: localhost:9000
+
+                    Test Report: ${env.BUILD_URL}console
                 """,
                 to: "infodba@example.com"
             )
         }
         failure {
             echo 'Deployment failed!'
+            script {
+                // Archive test reports even on failure
+                archiveArtifacts artifacts: 'smoke-test-*.txt,smoke-test-*.html', allowEmptyArchive: true
+            }
             emailext (
-                subject: "FAILURE: DocMan Deployment #${env.BUILD_NUMBER}",
+                subject: "❌ FAILURE: DocMan Deployment #${env.BUILD_NUMBER}",
                 body: """
                     DocMan deployment failed!
 
                     Build Number: ${env.BUILD_NUMBER}
+                    Build URL: ${env.BUILD_URL}
                     Please check the build logs for details.
+
+                    Test Report: ${env.BUILD_URL}console
                 """,
                 to: "infodba@example.com"
             )
