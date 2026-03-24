@@ -1,0 +1,311 @@
+// ============================================
+// DocMan Backend Jenkins Pipeline
+// ============================================
+
+def gitCredentialId = 'docman-git-credential'
+def gitRepoUrl = 'https://github.com/your-org/docman.git'
+def dockerRegistry = 'registry.example.com'
+def dockerRegistryCredential = 'docker-registry-credential'
+
+// Environment configuration
+def environments = [
+    dev: [
+        profile: 'standalone',
+        springProfiles: 'dev,standalone',
+        mysqlHost: 'dev-mysql.example.com',
+        mysqlPort: '3306',
+        mysqlDb: 'docman',
+        redisHost: 'dev-redis.example.com',
+        esHost: 'dev-es.example.com',
+        minioEndpoint: 'http://dev-minio.example.com:9000',
+        deployPath: '/opt/docman/dev',
+        healthCheckUrl: 'http://dev-backend.example.com:8080/actuator/health'
+    ],
+    test: [
+        profile: 'standalone',
+        springProfiles: 'test,standalone',
+        mysqlHost: 'test-mysql.example.com',
+        mysqlPort: '3306',
+        mysqlDb: 'docman',
+        redisHost: 'test-redis.example.com',
+        esHost: 'test-es.example.com',
+        minioEndpoint: 'http://test-minio.example.com:9000',
+        deployPath: '/opt/docman/test',
+        healthCheckUrl: 'http://test-backend.example.com:8080/actuator/health'
+    ],
+    prod: [
+        profile: 'distributed',
+        springProfiles: 'prod,distributed',
+        mysqlHost: 'prod-mysql.example.com',
+        mysqlPort: '3306',
+        mysqlDb: 'docman',
+        redisHost: 'prod-redis.example.com',
+        esHost: 'prod-es.example.com',
+        minioEndpoint: 'http://prod-minio.example.com:9000',
+        deployPath: '/opt/docman/prod',
+        healthCheckUrl: 'http://prod-backend.example.com:8080/actuator/health'
+    ]
+]
+
+pipeline {
+    agent {
+        label 'docker-build'
+    }
+
+    options {
+        timeout(time: 2, unit: 'HOURS')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        disableConcurrentBuilds()
+        timestamps()
+    }
+
+    parameters {
+        choice(
+            name: 'BRANCH',
+            choices: ['main', 'develop', 'release/*'],
+            description: 'Git branch to build'
+        )
+        choice(
+            name: 'ENVIRONMENT',
+            choices: ['dev', 'test', 'prod'],
+            description: 'Target environment'
+        )
+        choice(
+            name: 'PROFILE',
+            choices: ['standalone', 'distributed'],
+            description: 'Deployment profile'
+        )
+        booleanParam(
+            name: 'SKIP_TESTS',
+            defaultValue: false,
+            description: 'Skip unit tests'
+        )
+        booleanParam(
+            name: 'PUSH_IMAGE',
+            defaultValue: true,
+            description: 'Push Docker image to registry'
+        )
+        string(
+            name: 'VERSION',
+            defaultValue: '',
+            description: 'Custom version (optional, defaults to timestamp)'
+        )
+    }
+
+    environment {
+        // Determine version
+        BUILD_VERSION = params.VERSION ? params.VERSION : "${env.BUILD_NUMBER}"
+        DOCKER_IMAGE_NAME = 'docman-backend'
+        DOCKER_TAG = "${env.BRANCH}-${env.BUILD_VERSION}"
+        FULL_IMAGE = "${dockerRegistry}/${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
+    }
+
+    stages {
+        // Stage 1: Checkout
+        stage('Checkout') {
+            steps {
+                script {
+                    echo "Checking out branch: ${params.BRANCH}"
+                    checkout scm
+                }
+            }
+        }
+
+        // Stage 2: Prepare
+        stage('Prepare') {
+            steps {
+                script {
+                    echo "Preparing build environment..."
+                    env.ENV_CONFIG = environments[params.ENVIRONMENT]
+                    env.FINAL_PROFILE = params.PROFILE ?: env.ENV_CONFIG.profile
+                    env.FINAL_SPRING_PROFILES = env.ENV_CONFIG.springProfiles
+                }
+            }
+        }
+
+        // Stage 3: Maven Build
+        stage('Maven Build') {
+            steps {
+                script {
+                    echo "Building with profile: ${env.FINAL_PROFILE}"
+                    sh """
+                        mvn clean package \
+                            -P${env.FINAL_PROFILE} \
+                            -DskipTests=${params.SKIP_TESTS} \
+                            -Denv=${params.ENVIRONMENT} \
+                            -B \
+                            -e
+                    """
+                }
+            }
+        }
+
+        // Stage 4: Unit Tests
+        stage('Unit Tests') {
+            when {
+                expression { !params.SKIP_TESTS }
+            }
+            steps {
+                script {
+                    echo "Running unit tests..."
+                    sh """
+                        mvn test \
+                            -P${env.FINAL_PROFILE} \
+                            -B \
+                            -e
+                    """
+                }
+            }
+            post {
+                always {
+                    junit '**/target/surefire-reports/*.xml'
+                    jacoco execReport: buildInFailure: true
+                }
+            }
+        }
+
+        // Stage 5: Build Docker Image
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    echo "Building Docker image: ${env.FULL_IMAGE}"
+                    sh """
+                        docker build \
+                            --build-arg PROFILE=${env.FINAL_PROFILE} \
+                            --build-arg SPRING_PROFILES_ACTIVE=${env.FINAL_SPRING_PROFILES} \
+                            -t ${env.FULL_IMAGE} \
+                            -f docker/Dockerfile-backend \
+                            .
+                    """
+
+                    // Tag as latest for the branch
+                    if (params.ENVIRONMENT == 'prod') {
+                        sh """
+                            docker tag ${env.FULL_IMAGE} ${dockerRegistry}/${DOCKER_IMAGE_NAME}:latest
+                        """
+                    }
+                }
+            }
+        }
+
+        // Stage 6: Push Docker Image
+        stage('Push Docker Image') {
+            when {
+                expression { params.PUSH_IMAGE }
+            }
+            steps {
+                script {
+                    echo "Pushing Docker image to registry..."
+                    withCredentials([usernamePassword(credentialsId: dockerRegistryCredential, usernameVariable: 'REGISTRY_USER', passwordVariable: 'REGISTRY_PASS')]) {
+                        sh """
+                            echo ${REGISTRY_PASS} | docker login ${dockerRegistry} -u ${REGISTRY_USER} --password-stdin
+                            docker push ${env.FULL_IMAGE}
+                            if [ '${params.ENVIRONMENT}' == 'prod' ]; then
+                                docker push ${dockerRegistry}/${DOCKER_IMAGE_NAME}:latest
+                            fi
+                            docker logout ${dockerRegistry}
+                        """
+                    }
+                }
+            }
+        }
+
+        // Stage 7: Deploy to Environment
+        stage('Deploy') {
+            steps {
+                script {
+                    echo "Deploying to ${params.ENVIRONMENT}..."
+                    configFileProvider([configFile(fileId: 'docman-deploy-config', targetLocation: 'deploy-config.yaml')]) {
+                        sh """
+                            chmod +x jenkins/deploy.sh
+                            ./jenkins/deploy.sh \
+                                --environment ${params.ENVIRONMENT} \
+                                --profile ${env.FINAL_PROFILE} \
+                                --image ${env.FULL_IMAGE} \
+                                --deploy-path ${env.ENV_CONFIG.deployPath} \
+                                --config deploy-config.yaml
+                        """
+                    }
+                }
+            }
+        }
+
+        // Stage 8: Health Check
+        stage('Health Check') {
+            steps {
+                script {
+                    echo "Performing health check..."
+                    def maxRetries = 10
+                    def retryCount = 0
+                    def success = false
+
+                    while (retryCount < maxRetries && !success) {
+                        try {
+                            def response = httpRequest(
+                                url: env.ENV_CONFIG.healthCheckUrl,
+                                timeout: 10,
+                                validResponseCodes: '200'
+                            )
+                            if (response.status == 200) {
+                                success = true
+                                echo "Health check passed!"
+                            }
+                        } catch (Exception e) {
+                            retryCount++
+                            echo "Health check failed, retry ${retryCount}/${maxRetries}..."
+                            sleep(30)
+                        }
+                    }
+
+                    if (!success) {
+                        error "Health check failed after ${maxRetries} retries"
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Build and deployment completed successfully!"
+            script {
+                if (params.ENVIRONMENT == 'prod') {
+                    emailext(
+                        subject: "[DocMan] Build #${env.BUILD_NUMBER} - SUCCESS",
+                        body: """
+                            Build #${env.BUILD_NUMBER} deployed to ${params.ENVIRONMENT} successfully!
+
+                            Branch: ${params.BRANCH}
+                            Profile: ${env.FINAL_PROFILE}
+                            Docker Image: ${env.FULL_IMAGE}
+
+                            View logs: ${env.BUILD_URL}
+                        """,
+                        to: 'devops@example.com'
+                    )
+                }
+            }
+        }
+        failure {
+            echo "Build or deployment failed!"
+            script {
+                emailext(
+                    subject: "[DocMan] Build #${env.BUILD_NUMBER} - FAILED",
+                    body: """
+                        Build #${env.BUILD_NUMBER} failed!
+
+                        Branch: ${params.BRANCH}
+                        Environment: ${params.ENVIRONMENT}
+                        Profile: ${env.FINAL_PROFILE}
+
+                        Check logs: ${env.BUILD_URL}
+                    """,
+                    to: 'devops@example.com'
+                )
+            }
+        }
+        always {
+            cleanWs()
+        }
+    }
+}

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.docman.document.repository.TrashRecordRepository">
+
+    <resultMap id="BaseResultMap" type="com.docman.document.entity.TrashRecord">
+        <id column="id" property="id"/>
+        <result column="document_id" property="documentId"/>
+        <result column="document_name" property="documentName"/>
+        <result column="folder_id" property="folderId"/>
+        <result column="folder_path" property="folderPath"/>
+        <result column="owner_id" property="ownerId"/>
+        <result column="record_type" property="recordType"/>
+        <result column="original_status" property="originalStatus"/>
+        <result column="delete_time" property="deleteTime"/>
+        <result column="expire_time" property="expireTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <select id="findByOwnerId" resultMap="BaseResultMap">
+        SELECT * FROM trash_record
+        WHERE owner_id = #{ownerId}
+        AND deleted = 0
+        ORDER BY delete_time DESC
+    </select>
+
+    <select id="findByDocumentId" resultMap="BaseResultMap">
+        SELECT * FROM trash_record
+        WHERE document_id = #{documentId}
+        AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="findExpiredRecords" resultMap="BaseResultMap">
+        SELECT * FROM trash_record
+        WHERE expire_time &lt; NOW()
+        AND deleted = 0
+        ORDER BY expire_time ASC
+    </select>
+
+    <delete id="deleteByOwnerId">
+        DELETE FROM trash_record
+        WHERE owner_id = #{ownerId}
+    </delete>
+
+    <delete id="deleteByDocumentId">
+        DELETE FROM trash_record
+        WHERE document_id = #{documentId}
+    </delete>
+
+</mapper>

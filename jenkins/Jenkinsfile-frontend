@@ -1,0 +1,285 @@
+// ============================================
+// DocMan Frontend Jenkins Pipeline
+// ============================================
+
+def dockerRegistry = 'registry.example.com'
+def dockerRegistryCredential = 'docker-registry-credential'
+
+// Environment configuration
+def environments = [
+    dev: [
+        apiBaseUrl: 'http://dev-api.example.com',
+        gatewayUrl: 'http://dev-gateway.example.com',
+        deployPath: '/var/www/docman/dev',
+        healthCheckUrl: 'http://dev-frontend.example.com/'
+    ],
+    test: [
+        apiBaseUrl: 'http://test-api.example.com',
+        gatewayUrl: 'http://test-gateway.example.com',
+        deployPath: '/var/www/docman/test',
+        healthCheckUrl: 'http://test-frontend.example.com/'
+    ],
+    prod: [
+        apiBaseUrl: 'https://api.docman.com',
+        gatewayUrl: 'https://gateway.docman.com',
+        deployPath: '/var/www/docman/prod',
+        healthCheckUrl: 'https://www.docman.com/'
+    ]
+]
+
+pipeline {
+    agent {
+        label 'docker-build'
+    }
+
+    options {
+        timeout(time: 1, unit: 'HOURS')
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+        disableConcurrentBuilds()
+        timestamps()
+    }
+
+    parameters {
+        choice(
+            name: 'BRANCH',
+            choices: ['main', 'develop', 'release/*'],
+            description: 'Git branch to build'
+        )
+        choice(
+            name: 'ENVIRONMENT',
+            choices: ['dev', 'test', 'prod'],
+            description: 'Target environment'
+        )
+        booleanParam(
+            name: 'PUSH_IMAGE',
+            defaultValue: true,
+            description: 'Push Docker image to registry'
+        )
+        string(
+            name: 'VERSION',
+            defaultValue: '',
+            description: 'Custom version (optional)'
+        )
+        choice(
+            name: 'NODE_VERSION',
+            choices: ['18', '20'],
+            description: 'Node.js version'
+        )
+    }
+
+    environment {
+        BUILD_VERSION = params.VERSION ? params.VERSION : "${env.BUILD_NUMBER}"
+        DOCKER_IMAGE_NAME = 'docman-frontend'
+        DOCKER_TAG = "${env.BRANCH}-${env.BUILD_VERSION}"
+        FULL_IMAGE = "${dockerRegistry}/${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
+        ENV_CONFIG = 'dev'
+    }
+
+    stages {
+        // Stage 1: Checkout
+        stage('Checkout') {
+            steps {
+                script {
+                    echo "Checking out branch: ${params.BRANCH}"
+                    checkout scm
+                }
+            }
+        }
+
+        // Stage 2: Prepare
+        stage('Prepare') {
+            steps {
+                script {
+                    echo "Preparing build environment..."
+                    env.ENV_CONFIG = environments[params.ENVIRONMENT]
+                }
+            }
+        }
+
+        // Stage 3: Install Dependencies
+        stage('Install Dependencies') {
+            steps {
+                script {
+                    echo "Installing Node.js dependencies..."
+                    sh """
+                        node --version
+                        npm --version
+                        npm ci --only=production=false
+                    """
+                }
+            }
+        }
+
+        // Stage 4: Lint
+        stage('Lint') {
+            steps {
+                script {
+                    echo "Running lint checks..."
+                    sh """
+                        npm run lint || true
+                    """
+                }
+            }
+        }
+
+        // Stage 5: Build
+        stage('Build') {
+            steps {
+                script {
+                    echo "Building Next.js application..."
+                    sh """
+                        npm run build \
+                            -- --env.API_BASE_URL=${env.ENV_CONFIG.apiBaseUrl} \
+                            -- --env.GATEWAY_URL=${env.ENV_CONFIG.gatewayUrl} \
+                            -- --env.BUILD_ENV=${params.ENVIRONMENT}
+                    """
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'docman-frontend/.next/**/*', fingerprint: true
+                }
+            }
+        }
+
+        // Stage 6: Build Docker Image
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    echo "Building Docker image: ${env.FULL_IMAGE}"
+                    sh """
+                        docker build \
+                            --build-arg NEXT_PUBLIC_API_BASE_URL=${env.ENV_CONFIG.apiBaseUrl} \
+                            --build-arg NEXT_PUBLIC_GATEWAY_URL=${env.ENV_CONFIG.gatewayUrl} \
+                            --build-arg BUILD_ENV=${params.ENVIRONMENT} \
+                            --build-arg NODE_VERSION=${params.NODE_VERSION} \
+                            -t ${env.FULL_IMAGE} \
+                            -f docker/Dockerfile-frontend \
+                            .
+                    """
+
+                    // Tag as latest for production
+                    if (params.ENVIRONMENT == 'prod') {
+                        sh """
+                            docker tag ${env.FULL_IMAGE} ${dockerRegistry}/${DOCKER_IMAGE_NAME}:latest
+                        """
+                    }
+                }
+            }
+        }
+
+        // Stage 7: Push Docker Image
+        stage('Push Docker Image') {
+            when {
+                expression { params.PUSH_IMAGE }
+            }
+            steps {
+                script {
+                    echo "Pushing Docker image to registry..."
+                    withCredentials([usernamePassword(credentialsId: dockerRegistryCredential, usernameVariable: 'REGISTRY_USER', passwordVariable: 'REGISTRY_PASS')]) {
+                        sh """
+                            echo ${REGISTRY_PASS} | docker login ${dockerRegistry} -u ${REGISTRY_USER} --password-stdin
+                            docker push ${env.FULL_IMAGE}
+                            if [ '${params.ENVIRONMENT}' == 'prod' ]; then
+                                docker push ${dockerRegistry}/${DOCKER_IMAGE_NAME}:latest
+                            fi
+                            docker logout ${dockerRegistry}
+                        """
+                    }
+                }
+            }
+        }
+
+        // Stage 8: Deploy to Environment
+        stage('Deploy') {
+            steps {
+                script {
+                    echo "Deploying to ${params.ENVIRONMENT}..."
+                    sh """
+                        chmod +x jenkins/deploy.sh
+                        ./jenkins/deploy.sh \
+                            --frontend \
+                            --environment ${params.ENVIRONMENT} \
+                            --image ${env.FULL_IMAGE} \
+                            --deploy-path ${env.ENV_CONFIG.deployPath} \
+                            --health-check-url ${env.ENV_CONFIG.healthCheckUrl}
+                    """
+                }
+            }
+        }
+
+        // Stage 9: Health Check
+        stage('Health Check') {
+            steps {
+                script {
+                    echo "Performing health check..."
+                    def maxRetries = 5
+                    def retryCount = 0
+                    def success = false
+
+                    while (retryCount < maxRetries && !success) {
+                        try {
+                            def response = httpRequest(
+                                url: env.ENV_CONFIG.healthCheckUrl,
+                                timeout: 10,
+                                validResponseCodes: '200:399'
+                            )
+                            if (response.status >= 200 && response.status < 400) {
+                                success = true
+                                echo "Health check passed!"
+                            }
+                        } catch (Exception e) {
+                            retryCount++
+                            echo "Health check failed, retry ${retryCount}/${maxRetries}..."
+                            sleep(15)
+                        }
+                    }
+
+                    if (!success) {
+                        error "Health check failed after ${maxRetries} retries"
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Frontend build and deployment completed successfully!"
+            script {
+                emailext(
+                    subject: "[DocMan Frontend] Build #${env.BUILD_NUMBER} - SUCCESS",
+                    body: """
+                        Frontend Build #${env.BUILD_NUMBER} deployed to ${params.ENVIRONMENT} successfully!
+
+                        Branch: ${params.BRANCH}
+                        Docker Image: ${env.FULL_IMAGE}
+
+                        View logs: ${env.BUILD_URL}
+                    """,
+                    to: 'devops@example.com'
+                )
+            }
+        }
+        failure {
+            echo "Frontend build or deployment failed!"
+            script {
+                emailext(
+                    subject: "[DocMan Frontend] Build #${env.BUILD_NUMBER} - FAILED",
+                    body: """
+                        Frontend Build #${env.BUILD_NUMBER} failed!
+
+                        Branch: ${params.BRANCH}
+                        Environment: ${params.ENVIRONMENT}
+
+                        Check logs: ${env.BUILD_URL}
+                    """,
+                    to: 'devops@example.com'
+                )
+            }
+        }
+        always {
+            cleanWs()
+        }
+    }
+}

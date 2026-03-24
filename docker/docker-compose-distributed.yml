@@ -1,0 +1,738 @@
+# ============================================
+# DocMan Distributed Mode Docker Compose
+# Each microservice runs in its own container
+# ============================================
+
+services:
+  # -----------------------------------------
+  # Frontend - Next.js Application
+  # -----------------------------------------
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile-frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
+        NEXT_PUBLIC_GATEWAY_URL: http://localhost:8080
+        BUILD_ENV: production
+    container_name: docman-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
+      - NEXT_PUBLIC_GATEWAY_URL=http://localhost:8080
+    depends_on:
+      gateway:
+        condition: service_healthy
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # -----------------------------------------
+  # Gateway Service
+  # -----------------------------------------
+  gateway:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile-backend
+      args:
+        PROFILE: distributed
+        SPRING_PROFILES_ACTIVE: distributed
+    container_name: docman-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - PROFILE=distributed
+      - SERVICE_TYPE=gateway
+      - NACOS_HOST=nacos
+      - NACOS_PORT=8848
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - JVM_XMS=256m
+      - JVM_XMX=512m
+    depends_on:
+      nacos:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # -----------------------------------------
+  # User Service
+  # -----------------------------------------
+  user-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile-backend
+      args:
+        PROFILE: distributed
+        SPRING_PROFILES_ACTIVE: distributed
+    container_name: docman-user
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - PROFILE=distributed
+      - SERVICE_TYPE=user
+      - NACOS_HOST=nacos
+      - NACOS_PORT=8848
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=docman
+      - MYSQL_PASSWORD=docman123
+      - MYSQL_DATABASE=docman_user
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - JVM_XMS=256m
+      - JVM_XMX=512m
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # -----------------------------------------
+  # Document Service
+  # -----------------------------------------
+  document-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile-backend
+      args:
+        PROFILE: distributed
+        SPRING_PROFILES_ACTIVE: distributed
+    container_name: docman-document
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - PROFILE=distributed
+      - SERVICE_TYPE=document
+      - NACOS_HOST=nacos
+      - NACOS_PORT=8848
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=docman
+      - MYSQL_PASSWORD=docman123
+      - MYSQL_DATABASE=docman_document
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - JVM_XMS=512m
+      - JVM_XMX=1g
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # -----------------------------------------
+  # Storage Service
+  # -----------------------------------------
+  storage-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile-backend
+      args:
+        PROFILE: distributed
+        SPRING_PROFILES_ACTIVE: distributed
+    container_name: docman-storage
+    ports:
+      - "8083:8083"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - PROFILE=distributed
+      - SERVICE_TYPE=storage
+      - NACOS_HOST=nacos
+      - NACOS_PORT=8848
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=docman
+      - MYSQL_PASSWORD=docman123
+      - MYSQL_DATABASE=docman_storage
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - JVM_XMS=256m
+      - JVM_XMX=512m
+    depends_on:
+      mysql:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # -----------------------------------------
+  # Search Service
+  # -----------------------------------------
+  search-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile-backend
+      args:
+        PROFILE: distributed
+        SPRING_PROFILES_ACTIVE: distributed
+    container_name: docman-search
+    ports:
+      - "8084:8084"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - PROFILE=distributed
+      - SERVICE_TYPE=search
+      - NACOS_HOST=nacos
+      - NACOS_PORT=8848
+      - ES_HOST=elasticsearch
+      - ES_PORT=9200
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - JVM_XMS=512m
+      - JVM_XMX=1g
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # -----------------------------------------
+  # Version Service
+  # -----------------------------------------
+  version-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile-backend
+      args:
+        PROFILE: distributed
+        SPRING_PROFILES_ACTIVE: distributed
+    container_name: docman-version
+    ports:
+      - "8085:8085"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - PROFILE=distributed
+      - SERVICE_TYPE=version
+      - NACOS_HOST=nacos
+      - NACOS_PORT=8848
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=docman
+      - MYSQL_PASSWORD=docman123
+      - MYSQL_DATABASE=docman_version
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - JVM_XMS=256m
+      - JVM_XMX=512m
+    depends_on:
+      mysql:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # -----------------------------------------
+  # Classification Service
+  # -----------------------------------------
+  classification-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile-backend
+      args:
+        PROFILE: distributed
+        SPRING_PROFILES_ACTIVE: distributed
+    container_name: docman-classification
+    ports:
+      - "8086:8086"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - PROFILE=distributed
+      - SERVICE_TYPE=classification
+      - NACOS_HOST=nacos
+      - NACOS_PORT=8848
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=docman
+      - MYSQL_PASSWORD=docman123
+      - MYSQL_DATABASE=docman_classification
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - JVM_XMS=256m
+      - JVM_XMX=512m
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # -----------------------------------------
+  # Approval Service
+  # -----------------------------------------
+  approval-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile-backend
+      args:
+        PROFILE: distributed
+        SPRING_PROFILES_ACTIVE: distributed
+    container_name: docman-approval
+    ports:
+      - "8087:8087"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - PROFILE=distributed
+      - SERVICE_TYPE=approval
+      - NACOS_HOST=nacos
+      - NACOS_PORT=8848
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=docman
+      - MYSQL_PASSWORD=docman123
+      - MYSQL_DATABASE=docman_approval
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - JVM_XMS=256m
+      - JVM_XMX=512m
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8087/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # -----------------------------------------
+  # Subscription Service
+  # -----------------------------------------
+  subscription-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile-backend
+      args:
+        PROFILE: distributed
+        SPRING_PROFILES_ACTIVE: distributed
+    container_name: docman-subscription
+    ports:
+      - "8088:8088"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - PROFILE=distributed
+      - SERVICE_TYPE=subscription
+      - NACOS_HOST=nacos
+      - NACOS_PORT=8848
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=docman
+      - MYSQL_PASSWORD=docman123
+      - MYSQL_DATABASE=docman_subscription
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - JVM_XMS=256m
+      - JVM_XMX=512m
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # -----------------------------------------
+  # Collaboration Service
+  # -----------------------------------------
+  collaboration-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile-backend
+      args:
+        PROFILE: distributed
+        SPRING_PROFILES_ACTIVE: distributed
+    container_name: docman-collaboration
+    ports:
+      - "8089:8089"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - PROFILE=distributed
+      - SERVICE_TYPE=collaboration
+      - NACOS_HOST=nacos
+      - NACOS_PORT=8848
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=docman
+      - MYSQL_PASSWORD=docman123
+      - MYSQL_DATABASE=docman_collaboration
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - JVM_XMS=256m
+      - JVM_XMX=512m
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8089/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # -----------------------------------------
+  # CAD Service
+  # -----------------------------------------
+  cad-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile-backend
+      args:
+        PROFILE: distributed
+        SPRING_PROFILES_ACTIVE: distributed
+    container_name: docman-cad
+    ports:
+      - "8090:8090"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - PROFILE=distributed
+      - SERVICE_TYPE=cad
+      - NACOS_HOST=nacos
+      - NACOS_PORT=8848
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=docman
+      - MYSQL_PASSWORD=docman123
+      - MYSQL_DATABASE=docman_cad
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - JVM_XMS=512m
+      - JVM_XMX=1g
+    depends_on:
+      mysql:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # -----------------------------------------
+  # System Service
+  # -----------------------------------------
+  system-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile-backend
+      args:
+        PROFILE: distributed
+        SPRING_PROFILES_ACTIVE: distributed
+    container_name: docman-system
+    ports:
+      - "8091:8091"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - PROFILE=distributed
+      - SERVICE_TYPE=system
+      - NACOS_HOST=nacos
+      - NACOS_PORT=8848
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=docman
+      - MYSQL_PASSWORD=docman123
+      - MYSQL_DATABASE=docman_system
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - JVM_XMS=256m
+      - JVM_XMX=512m
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8091/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # -----------------------------------------
+  # Nacos Service Discovery
+  # -----------------------------------------
+  nacos:
+    image: nacos/nacos-server:v2.2.3
+    container_name: docman-nacos
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+    environment:
+      - MODE=standalone
+      - PREFER_HOST_MODE=hostname
+      - SPRING_DATASOURCE_PLATFORM=embedded
+      - JVM_XMS=512m
+      - JVM_XMX=512m
+    volumes:
+      - nacos-data:/home/nacos/data
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # -----------------------------------------
+  # MySQL Database
+  # -----------------------------------------
+  mysql:
+    image: mysql:8.0
+    container_name: docman-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123
+      - MYSQL_USER=docman
+      - MYSQL_PASSWORD=docman123
+      - TZ=Asia/Shanghai
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./mysql.conf:/etc/mysql/conf.d/custom.cnf:ro
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max_connections=1000
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot123"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # -----------------------------------------
+  # Redis Cache
+  # -----------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: docman-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
+    volumes:
+      - redis-data:/data
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # -----------------------------------------
+  # MinIO Object Storage
+  # -----------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: docman-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+      - MINIO_DEFAULT_BUCKETS=docman-documents,docman-cad,docman-thumbnails
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 10s
+
+  # -----------------------------------------
+  # Elasticsearch
+  # -----------------------------------------
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
+    container_name: docman-elasticsearch
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  docman-network:
+    driver: bridge
+    name: docman-network
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  mysql-data:
+    driver: local
+    name: docman-mysql-data
+  redis-data:
+    driver: local
+    name: docman-redis-data
+  minio-data:
+    driver: local
+    name: docman-minio-data
+  es-data:
+    driver: local
+    name: docman-es-data
+  nacos-data:
+    driver: local
+    name: docman-nacos-data

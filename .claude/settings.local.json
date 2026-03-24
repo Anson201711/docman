@@ -5,7 +5,10 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git remote:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git config:*)",
+      "Bash(GIT_TERMINAL_PROMPT=0 git add -A)",
+      "Bash(chmod +x /Users/infodba/Documents/01_codes/docman/jenkins/deploy.sh)"
     ]
   }
 }

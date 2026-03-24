@@ -1,0 +1,124 @@
+# ============================================
+# DocMan Backend Dockerfile - Multi-stage build
+# ============================================
+
+# Stage 1: Build
+FROM maven:3.9-eclipse-temurin-17 AS builder
+
+WORKDIR /build
+
+# Copy pom files first for dependency caching
+COPY pom.xml .
+COPY docman-common/pom.xml docman-common/
+COPY docman-gateway/pom.xml docman-gateway/
+COPY docman-user/pom.xml docman-user/
+COPY docman-document/pom.xml docman-document/
+COPY docman-storage/pom.xml docman-storage/
+COPY docman-search/pom.xml docman-search/
+COPY docman-version/pom.xml docman-version/
+COPY docman-classification/pom.xml docman-classification/
+COPY docman-approval/pom.xml docman-approval/
+COPY docman-subscription/pom.xml docman-subscription/
+COPY docman-collaboration/pom.xml docman-collaboration/
+COPY docman-cad/pom.xml docman-cad/
+COPY docman-system/pom.xml docman-system/
+
+# Download dependencies
+RUN mvn dependency:go-offline -B
+
+# Copy source code
+COPY docman-common/src docman-common/src
+COPY docman-gateway/src docman-gateway/src
+COPY docman-user/src docman-user/src
+COPY docman-document/src docman-document/src
+COPY docman-storage/src docman-storage/src
+COPY docman-search/src docman-search/src
+COPY docman-version/src docman-version/src
+COPY docman-classification/src docman-classification/src
+COPY docman-approval/src docman-approval/src
+COPY docman-subscription/src docman-subscription/src
+COPY docman-collaboration/src docman-collaboration/src
+COPY docman-cad/src docman-cad/src
+COPY docman-system/src docman-system/src
+
+# Build arguments
+ARG PROFILE=standalone
+ARG SPRING_PROFILES_ACTIVE=standalone
+
+# Build the application
+RUN mvn clean package -P${PROFILE} -DskipTests -B
+
+# Stage 2: Runtime - Standalone mode (all-in-one jar)
+FROM eclipse-temurin:17-jre-jammy AS runtime-standalone
+
+LABEL maintainer="DocMan Team"
+LABEL description="DocMan Backend - Standalone Mode"
+
+WORKDIR /app
+
+# Create non-root user for security
+RUN groupadd -r docman && useradd -r -g docman docman
+
+# Install utilities
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the fat jar from build stage
+COPY --from=builder /build/docman-gateway/target/*.jar /app/docman.jar
+COPY --from=builder /build/docman-user/target/*.jar /app/docman-user.jar
+COPY --from=builder /build/docman-document/target/*.jar /app/docman-document.jar
+COPY --from=builder /build/docman-storage/target/*.jar /app/docman-storage.jar
+COPY --from=builder /build/docman-search/target/*.jar /app/docman-search.jar
+COPY --from=builder /build/docman-version/target/*.jar /app/docman-version.jar
+COPY --from=builder /build/docman-classification/target/*.jar /app/docman-classification.jar
+COPY --from=builder /build/docman-approval/target/*.jar /app/docman-approval.jar
+COPY --from=builder /build/docman-subscription/target/*.jar /app/docman-subscription.jar
+COPY --from=builder /build/docman-collaboration/target/*.jar /app/docman-collaboration.jar
+COPY --from=builder /build/docman-cad/target/*.jar /app/docman-cad.jar
+COPY --from=builder /build/docman-system/target/*.jar /app/docman-system.jar
+
+# Copy entrypoint script
+COPY <<EOF /app/entrypoint.sh
+#!/bin/bash
+set -e
+
+# Default to standalone profile
+PROFILE=\${PROFILE:-standalone}
+
+echo "Starting DocMan in \$PROFILE mode..."
+
+case "\$PROFILE" in
+    standalone)
+        echo "Starting all-in-one DocMan application..."
+        java -jar /app/docman.jar --spring.profiles.active=\$PROFILE \
+            -Dserver.port=\${GATEWAY_PORT:-8080} \
+            -Dspring.cloud.nacos.discovery.server-addr=\${NACOS_HOST:-nacos:8848} \
+            -Dspring.datasource.url=jdbc:mysql://\${MYSQL_HOST:-mysql}:3306/docman?useUnicode=true \
+            -Dspring.datasource.username=\${MYSQL_USER:-root} \
+            -Dspring.datasource.password=\${MYSQL_PASSWORD:-password} \
+            -Dspring.data.redis.host=\${REDIS_HOST:-redis} \
+            -Dspring.data.redis.port=\${REDIS_PORT:-6379} \
+            -Dspring.data.redis.password=\${REDIS_PASSWORD:-} \
+            -Delasticsearch.uris=\${ES_HOST:-elasticsearch}:9200 \
+            -Dminio.endpoint=\${MINIO_ENDPOINT:-http://minio:9000} \
+            -Dminio.access-key=\${MINIO_ACCESS_KEY:-minioadmin} \
+            -Dminio.secret-key=\${MINIO_SECRET_KEY:-minioadmin}
+        ;;
+    *)
+        echo "Unknown profile: \$PROFILE"
+        exit 1
+        ;;
+esac
+EOF
+
+RUN chmod +x /app/entrypoint.sh
+
+# Set ownership
+RUN chown -R docman:docman /app
+
+USER docman
+
+EXPOSE 8080 8081 8082 8083 8084 8085 8086 8087 8088 8089 8090 8091
+
+ENTRYPOINT ["/app/entrypoint.sh"]

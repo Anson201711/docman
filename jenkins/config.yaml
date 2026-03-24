@@ -1,0 +1,206 @@
+# ============================================
+# DocMan Jenkins Configuration File
+# ============================================
+
+# Git Configuration
+git:
+  repoUrl: "https://github.com/your-org/docman.git"
+  credentialId: "docman-git-credential"
+  branches:
+    - main
+    - develop
+    - "release/*"
+
+# Docker Registry Configuration
+docker:
+  registry: "registry.example.com"
+  registryCredential: "docker-registry-credential"
+  backendImage: "docman-backend"
+  frontendImage: "docman-frontend"
+
+# ============================================
+# Environment: Development
+# ============================================
+environments:
+  dev:
+    # Backend Configuration
+    backend:
+      profile: "standalone"
+      springProfiles: "dev,standalone"
+      mysql:
+        host: "dev-mysql.example.com"
+        port: 3306
+        database: "docman"
+        username: "docman"
+        password: "${DEV_MYSQL_PASSWORD}"
+      redis:
+        host: "dev-redis.example.com"
+        port: 6379
+        password: "${DEV_REDIS_PASSWORD}"
+      elasticsearch:
+        host: "dev-es.example.com"
+        port: 9200
+      minio:
+        endpoint: "http://dev-minio.example.com:9000"
+        accessKey: "minioadmin"
+        secretKey: "${DEV_MINIO_SECRET}"
+      nacos:
+        host: "dev-nacos.example.com"
+        port: 8848
+      jvm:
+        xms: "512m"
+        xmx: "1g"
+
+    # Frontend Configuration
+    frontend:
+      apiBaseUrl: "http://dev-api.example.com"
+      gatewayUrl: "http://dev-gateway.example.com"
+
+    # Deployment Configuration
+    deploy:
+      backend:
+        host: "dev-backend.example.com"
+        user: "deploy"
+        sshKey: "~/.ssh/docman_dev"
+        path: "/opt/docman/dev"
+        healthCheckUrl: "http://dev-backend.example.com:8080/actuator/health"
+      frontend:
+        host: "dev-frontend.example.com"
+        user: "deploy"
+        sshKey: "~/.ssh/docman_dev"
+        path: "/var/www/docman/dev"
+        healthCheckUrl: "http://dev-frontend.example.com/"
+
+# ============================================
+# Environment: Test
+# ============================================
+  test:
+    backend:
+      profile: "standalone"
+      springProfiles: "test,standalone"
+      mysql:
+        host: "test-mysql.example.com"
+        port: 3306
+        database: "docman"
+        username: "docman"
+        password: "${TEST_MYSQL_PASSWORD}"
+      redis:
+        host: "test-redis.example.com"
+        port: 6379
+        password: "${TEST_REDIS_PASSWORD}"
+      elasticsearch:
+        host: "test-es.example.com"
+        port: 9200
+      minio:
+        endpoint: "http://test-minio.example.com:9000"
+        accessKey: "minioadmin"
+        secretKey: "${TEST_MINIO_SECRET}"
+      nacos:
+        host: "test-nacos.example.com"
+        port: 8848
+      jvm:
+        xms: "512m"
+        xmx: "1g"
+
+    frontend:
+      apiBaseUrl: "http://test-api.example.com"
+      gatewayUrl: "http://test-gateway.example.com"
+
+    deploy:
+      backend:
+        host: "test-backend.example.com"
+        user: "deploy"
+        sshKey: "~/.ssh/docman_test"
+        path: "/opt/docman/test"
+        healthCheckUrl: "http://test-backend.example.com:8080/actuator/health"
+      frontend:
+        host: "test-frontend.example.com"
+        user: "deploy"
+        sshKey: "~/.ssh/docman_test"
+        path: "/var/www/docman/test"
+        healthCheckUrl: "http://test-frontend.example.com/"
+
+# ============================================
+# Environment: Production
+# ============================================
+  prod:
+    backend:
+      profile: "distributed"
+      springProfiles: "prod,distributed"
+      mysql:
+        host: "prod-mysql.example.com"
+        port: 3306
+        database: "docman"
+        username: "docman"
+        password: "${PROD_MYSQL_PASSWORD}"
+      redis:
+        host: "prod-redis.example.com"
+        port: 6379
+        password: "${PROD_REDIS_PASSWORD}"
+      elasticsearch:
+        host: "prod-es.example.com"
+        port: 9200
+      minio:
+        endpoint: "http://prod-minio.example.com:9000"
+        accessKey: "minioadmin"
+        secretKey: "${PROD_MINIO_SECRET}"
+      nacos:
+        host: "prod-nacos.example.com"
+        port: 8848
+      jvm:
+        xms: "1g"
+        xmx: "2g"
+
+    frontend:
+      apiBaseUrl: "https://api.docman.com"
+      gatewayUrl: "https://gateway.docman.com"
+
+    deploy:
+      backend:
+        host: "prod-backend1.example.com"
+        user: "deploy"
+        sshKey: "~/.ssh/docman_prod"
+        path: "/opt/docman/prod"
+        healthCheckUrl: "http://prod-backend.example.com:8080/actuator/health"
+      frontend:
+        host: "prod-frontend.example.com"
+        user: "deploy"
+        sshKey: "~/.ssh/docman_prod"
+        path: "/var/www/docman/prod"
+        healthCheckUrl: "https://www.docman.com/"
+
+# ============================================
+# Notification Settings
+# ============================================
+notifications:
+  email:
+    enabled: true
+    recipients:
+      - "devops@example.com"
+      - "developers@example.com"
+    onSuccess: true
+    onFailure: true
+
+# ============================================
+# Build Settings
+# ============================================
+build:
+  maven:
+    options: "-B -e -U"
+    flags:
+      dev: "-Pdev -DskipTests"
+      test: "-Ptest -DskipTests"
+      prod: "-Pprod"
+  npm:
+    flags:
+      dev: "--env.BUILD_ENV=dev"
+      test: "--env.BUILD_ENV=test"
+      prod: "--env.BUILD_ENV=production"
+
+# ============================================
+# Artifact Retention
+# ============================================
+retention:
+  builds: 10
+  days: 30
+  artifacts: true

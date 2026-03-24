@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.docman.document.repository.DocumentPermissionRepository">
+
+    <resultMap id="BaseResultMap" type="com.docman.document.entity.DocumentPermission">
+        <id column="id" property="id"/>
+        <result column="document_id" property="documentId"/>
+        <result column="user_id" property="userId"/>
+        <result column="permission_type" property="permissionType"/>
+        <result column="can_read" property="canRead"/>
+        <result column="can_write" property="canWrite"/>
+        <result column="can_delete" property="canDelete"/>
+        <result column="can_share" property="canShare"/>
+        <result column="can_download" property="canDownload"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <select id="findByDocumentId" resultMap="BaseResultMap">
+        SELECT * FROM document_permission
+        WHERE document_id = #{documentId}
+        AND deleted = 0
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="findByUserId" resultMap="BaseResultMap">
+        SELECT * FROM document_permission
+        WHERE user_id = #{userId}
+        AND deleted = 0
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="findByDocumentIdAndUserId" resultMap="BaseResultMap">
+        SELECT * FROM document_permission
+        WHERE document_id = #{documentId}
+        AND user_id = #{userId}
+        AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <delete id="deleteByDocumentId">
+        DELETE FROM document_permission
+        WHERE document_id = #{documentId}
+    </delete>
+
+</mapper>
