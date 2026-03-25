@@ -205,7 +205,7 @@ services:
 # ============================================
 networks:
   docman-network:
-    driver: bridge
+    external: true
     name: docman-network
 
 # ============================================

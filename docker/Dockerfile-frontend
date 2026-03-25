@@ -49,10 +49,9 @@ RUN addgroup -g 1001 -S nodejs && \
 
 WORKDIR /app
 
-# Copy built application
+# Copy built application (standalone mode)
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static/
-COPY --from=builder /app/public ./public
 
 # Set ownership
 RUN chown -R nextjs:nodejs /app
