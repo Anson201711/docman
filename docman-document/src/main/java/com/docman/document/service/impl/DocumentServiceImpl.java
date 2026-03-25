@@ -230,7 +230,21 @@ public class DocumentServiceImpl implements DocumentService {
     @Transactional(rollbackFor = Exception.class)
     @CacheEvict(value = "document", key = "#id")
     public Document restoreDocument(Long id) {
-        return trashService.restoreFromTrash(id);
+        TrashRecord trashRecord = trashRecordRepository.findByDocumentId(id);
+        if (trashRecord == null) {
+            throw new RuntimeException("Trash record not found for document: " + id);
+        }
+        Document document = new Document();
+        document.setId(trashRecord.getDocumentId());
+        document.setName(trashRecord.getDocumentName());
+        document.setFolderId(trashRecord.getFolderId());
+        document.setPath(trashRecord.getFolderPath());
+        document.setOwnerId(trashRecord.getOwnerId());
+        document.setStatus(trashRecord.getOriginalStatus());
+        documentRepository.insert(document);
+        trashRecordRepository.deleteById(trashRecord.getId());
+        log.info("Restored document {} from trash", id);
+        return document;
     }
 
     @Override
