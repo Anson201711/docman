@@ -1,0 +1,533 @@
+pipeline {
+    agent any
+
+    environment {
+        GATEWAY_URL = "${GATEWAY_URL:-http://192.168.145.252:9080}"
+        FRONTEND_URL = "${FRONTEND_URL:-http://192.168.145.252:3000}"
+        MYSQL_HOST = "${MYSQL_HOST:-192.168.145.252}"
+        REDIS_HOST = "${REDIS_HOST:-192.168.145.252}"
+        ES_HOST = "${ES_HOST:-192.168.145.252}"
+        MINIO_HOST = "${MINIO_HOST:-192.168.145.252}"
+        REPORT_DIR = "${WORKSPACE}/test-reports"
+    }
+
+    stages {
+        stage('准备测试环境') {
+            steps {
+                script {
+                    echo "=== 准备测试环境 ==="
+                    sh '''
+                        mkdir -p ${REPORT_DIR}
+
+                        # 生成测试报告头部
+                        cat > ${REPORT_DIR}/smoke-test-report.html << 'HTML_HEAD'
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocMan 冒烟测试报告</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        .header .timestamp {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: #f8f9fa;
+        }
+        .summary-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .summary-card.total { border-left: 4px solid #667eea; }
+        .summary-card.passed { border-left: 4px solid #28a745; }
+        .summary-card.failed { border-left: 4px solid #dc3545; }
+        .summary-card .number {
+            font-size: 3em;
+            font-weight: bold;
+            color: #333;
+        }
+        .summary-card.passed .number { color: #28a745; }
+        .summary-card.failed .number { color: #dc3545; }
+        .summary-card .label {
+            color: #666;
+            font-size: 1em;
+            margin-top: 5px;
+        }
+        .content {
+            padding: 30px;
+        }
+        .section-title {
+            font-size: 1.5em;
+            color: #333;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }
+        tr:hover { background: #f8f9fa; }
+        tr:last-child td { border-bottom: none; }
+        .status {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        .status.pass {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.fail {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .service-group {
+            margin-bottom: 40px;
+        }
+        .footer {
+            background: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            color: #666;
+            border-top: 1px solid #eee;
+        }
+        .duration {
+            display: inline-block;
+            background: #e9ecef;
+            padding: 5px 15px;
+            border-radius: 15px;
+            margin-left: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏠 DocMan 冒烟测试报告</h1>
+            <p class="timestamp">测试时间: TIMESTAMP</p>
+        </div>
+
+        <div class="summary">
+            <div class="summary-card total">
+                <div class="number" id="total-count">-</div>
+                <div class="label">总测试数</div>
+            </div>
+            <div class="summary-card passed">
+                <div class="number" id="passed-count">-</div>
+                <div class="label">通过</div>
+            </div>
+            <div class="summary-card failed">
+                <div class="number" id="failed-count">-</div>
+                <div class="label">失败</div>
+            </div>
+        </div>
+
+        <div class="content">
+HTML_HEAD
+                        echo "测试报告文件已创建"
+                    '''
+                }
+            }
+        }
+
+        stage('中间件服务测试') {
+            steps {
+                script {
+                    echo "=== 测试中间件服务 ==="
+                    sh '''
+                        # 测试 MySQL
+                        echo "测试 MySQL..."
+                        MYSQL_RESULT="FAIL"
+                        MYSQL_DETAIL=""
+                        if docker exec docman-mysql mysqladmin ping -h localhost -u root -proot123 &>/dev/null; then
+                            MYSQL_RESULT="PASS"
+                            MYSQL_DETAIL="MySQL 连接成功"
+                        else
+                            MYSQL_DETAIL="MySQL 连接失败 - 检查容器状态"
+                        fi
+                        echo "MYSQL|$MYSQL_RESULT|$MYSQL_DETAIL" >> ${WORKSPACE}/test-results.txt
+
+                        # 测试 Redis
+                        echo "测试 Redis..."
+                        REDIS_RESULT="FAIL"
+                        REDIS_DETAIL=""
+                        if docker exec docman-redis redis-cli -a "" ping 2>/dev/null | grep -q PONG; then
+                            REDIS_RESULT="PASS"
+                            REDIS_DETAIL="Redis 连接成功"
+                        else
+                            REDIS_DETAIL="Redis 连接失败"
+                        fi
+                        echo "REDIS|$REDIS_RESULT|$REDIS_DETAIL" >> ${WORKSPACE}/test-results.txt
+
+                        # 测试 Elasticsearch
+                        echo "测试 Elasticsearch..."
+                        ES_RESULT="FAIL"
+                        ES_DETAIL=""
+                        if curl -sf http://${ES_HOST}:9200/_cluster/health 2>/dev/null | grep -q "status"; then
+                            ES_RESULT="PASS"
+                            ES_DETAIL="Elasticsearch 集群健康"
+                        else
+                            ES_DETAIL="Elasticsearch 无响应"
+                        fi
+                        echo "ELASTICSEARCH|$ES_RESULT|$ES_DETAIL" >> ${WORKSPACE}/test-results.txt
+
+                        # 测试 MinIO
+                        echo "测试 MinIO..."
+                        MINIO_RESULT="FAIL"
+                        MINIO_DETAIL=""
+                        if curl -sf http://${MINIO_HOST}:9000/minio/health/live 2>/dev/null | grep -q "true"; then
+                            MINIO_RESULT="PASS"
+                            MINIO_DETAIL="MinIO 服务正常"
+                        else
+                            MINIO_DETAIL="MinIO 无响应"
+                        fi
+                        echo "MINIO|$MINIO_RESULT|$MINIO_DETAIL" >> ${WORKSPACE}/test-results.txt
+                    '''
+                }
+            }
+        }
+
+        stage('后端服务测试') {
+            steps {
+                script {
+                    echo "=== 测试后端服务 ==="
+                    sh '''
+                        # 测试 Gateway 健康检查
+                        echo "测试 Gateway..."
+                        GATEWAY_RESULT="FAIL"
+                        GATEWAY_DETAIL=""
+                        GATEWAY_CODE=$(curl -sf -o /dev/null -w "%{http_code}" http://${GATEWAY_URL}/actuator/health 2>/dev/null || echo "000")
+                        if [ "$GATEWAY_CODE" = "200" ]; then
+                            GATEWAY_RESULT="PASS"
+                            GATEWAY_DETAIL="HTTP $GATEWAY_CODE - 服务健康"
+                        else
+                            GATEWAY_DETAIL="期望 200, 实际 $GATEWAY_CODE"
+                        fi
+                        echo "GATEWAY|$GATEWAY_RESULT|$GATEWAY_DETAIL" >> ${WORKSPACE}/test-results.txt
+
+                        # 测试用户服务
+                        echo "测试用户服务..."
+                        USER_RESULT="FAIL"
+                        USER_DETAIL=""
+                        USER_CODE=$(curl -sf -o /dev/null -w "%{http_code}" http://${GATEWAY_URL}/api/auth/health 2>/dev/null || echo "000")
+                        if [ "$USER_CODE" = "200" ] || [ "$USER_CODE" = "404" ]; then
+                            USER_RESULT="PASS"
+                            USER_DETAIL="HTTP $USER_CODE - 服务可达"
+                        else
+                            USER_DETAIL="期望 200/404, 实际 $USER_CODE"
+                        fi
+                        echo "USER_SERVICE|$USER_RESULT|$USER_DETAIL" >> ${WORKSPACE}/test-results.txt
+
+                        # 测试文档服务
+                        echo "测试文档服务..."
+                        DOC_RESULT="FAIL"
+                        DOC_DETAIL=""
+                        DOC_CODE=$(curl -sf -o /dev/null -w "%{http_code}" http://${GATEWAY_URL}/api/documents/health 2>/dev/null || echo "000")
+                        if [ "$DOC_CODE" = "200" ] || [ "$DOC_CODE" = "404" ]; then
+                            DOC_RESULT="PASS"
+                            DOC_DETAIL="HTTP $DOC_CODE - 服务可达"
+                        else
+                            DOC_DETAIL="期望 200/404, 实际 $DOC_CODE"
+                        fi
+                        echo "DOCUMENT_SERVICE|$DOC_RESULT|$DOC_DETAIL" >> ${WORKSPACE}/test-results.txt
+
+                        # 测试存储服务
+                        echo "测试存储服务..."
+                        STORAGE_RESULT="FAIL"
+                        STORAGE_DETAIL=""
+                        STORAGE_CODE=$(curl -sf -o /dev/null -w "%{http_code}" http://${GATEWAY_URL}/api/storage/health 2>/dev/null || echo "000")
+                        if [ "$STORAGE_CODE" = "200" ] || [ "$STORAGE_CODE" = "404" ]; then
+                            STORAGE_RESULT="PASS"
+                            STORAGE_DETAIL="HTTP $STORAGE_CODE - 服务可达"
+                        else
+                            STORAGE_DETAIL="期望 200/404, 实际 $STORAGE_CODE"
+                        fi
+                        echo "STORAGE_SERVICE|$STORAGE_RESULT|$STORAGE_DETAIL" >> ${WORKSPACE}/test-results.txt
+
+                        # 测试搜索服务
+                        echo "测试搜索服务..."
+                        SEARCH_RESULT="FAIL"
+                        SEARCH_DETAIL=""
+                        SEARCH_CODE=$(curl -sf -o /dev/null -w "%{http_code}" http://${GATEWAY_URL}/api/search/health 2>/dev/null || echo "000")
+                        if [ "$SEARCH_CODE" = "200" ] || [ "$SEARCH_CODE" = "404" ]; then
+                            SEARCH_RESULT="PASS"
+                            SEARCH_DETAIL="HTTP $SEARCH_CODE - 服务可达"
+                        else
+                            SEARCH_DETAIL="期望 200/404, 实际 $SEARCH_CODE"
+                        fi
+                        echo "SEARCH_SERVICE|$SEARCH_RESULT|$SEARCH_DETAIL" >> ${WORKSPACE}/test-results.txt
+                    '''
+                }
+            }
+        }
+
+        stage('前端服务测试') {
+            steps {
+                script {
+                    echo "=== 测试前端服务 ==="
+                    sh '''
+                        # 测试前端健康检查
+                        echo "测试前端..."
+                        FRONTEND_RESULT="FAIL"
+                        FRONTEND_DETAIL=""
+                        FRONTEND_CODE=$(curl -sf -o /dev/null -w "%{http_code}" http://${FRONTEND_URL}/health 2>/dev/null || echo "000")
+                        if [ "$FRONTEND_CODE" = "200" ]; then
+                            FRONTEND_RESULT="PASS"
+                            FRONTEND_DETAIL="HTTP $FRONTEND_CODE - 前端正常"
+                        else
+                            FRONTEND_CODE=$(curl -sf -o /dev/null -w "%{http_code}" http://${FRONTEND_URL} 2>/dev/null || echo "000")
+                            if [ "$FRONTEND_CODE" = "200" ] || [ "$FRONTEND_CODE" = "304" ]; then
+                                FRONTEND_RESULT="PASS"
+                                FRONTEND_DETAIL="HTTP $FRONTEND_CODE - 前端可访问"
+                            else
+                                FRONTEND_DETAIL="期望 200, 实际 $FRONTEND_CODE"
+                            fi
+                        fi
+                        echo "FRONTEND|$FRONTEND_RESULT|$FRONTEND_DETAIL" >> ${WORKSPACE}/test-results.txt
+                    '''
+                }
+            }
+        }
+
+        stage('生成测试报告') {
+            steps {
+                script {
+                    echo "=== 生成 HTML 测试报告 ==="
+                    sh '''
+                        # 生成中间件测试表格
+                        cat >> ${REPORT_DIR}/smoke-test-report.html << 'TABLE_MIDDLEWARE'
+            <div class="service-group">
+                <h2 class="section-title">🔧 中间件服务</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>服务</th>
+                            <th>状态</th>
+                            <th>详情</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+TABLE_MIDDLEWARE
+
+                        # 解析中间件结果
+                        while IFS='|' read -r name result detail; do
+                            case "$name" in
+                                MYSQL|REDIS|ELASTICSEARCH|MINIO)
+                                    status_class="pass"
+                                    [ "$result" = "FAIL" ] && status_class="fail"
+                                    echo "                        <tr>" >> ${REPORT_DIR}/smoke-test-report.html
+                                    echo "                            <td>$name</td>" >> ${REPORT_DIR}/smoke-test-report.html
+                                    echo "                            <td><span class=\"status $status_class\">$result</span></td>" >> ${REPORT_DIR}/smoke-test-report.html
+                                    echo "                            <td>$detail</td>" >> ${REPORT_DIR}/smoke-test-report.html
+                                    echo "                        </tr>" >> ${REPORT_DIR}/smoke-test-report.html
+                                    ;;
+                            esac
+                        done < ${WORKSPACE}/test-results.txt
+
+                        cat >> ${REPORT_DIR}/smoke-test-report.html << 'TABLE_MIDDLEWARE_END'
+                    </tbody>
+                </table>
+            </div>
+TABLE_MIDDLEWARE_END
+
+                        # 生成后端服务测试表格
+                        cat >> ${REPORT_DIR}/smoke-test-report.html << 'TABLE_BACKEND'
+            <div class="service-group">
+                <h2 class="section-title">⚙️ 后端服务</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>服务</th>
+                            <th>状态</th>
+                            <th>详情</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+TABLE_BACKEND
+
+                        # 解析后端结果
+                        while IFS='|' read -r name result detail; do
+                            case "$name" in
+                                GATEWAY|USER_SERVICE|DOCUMENT_SERVICE|STORAGE_SERVICE|SEARCH_SERVICE)
+                                    status_class="pass"
+                                    [ "$result" = "FAIL" ] && status_class="fail"
+                                    display_name=$(echo "$name" | sed 's/_/ /g')
+                                    echo "                        <tr>" >> ${REPORT_DIR}/smoke-test-report.html
+                                    echo "                            <td>$display_name</td>" >> ${REPORT_DIR}/smoke-test-report.html
+                                    echo "                            <td><span class=\"status $status_class\">$result</span></td>" >> ${REPORT_DIR}/smoke-test-report.html
+                                    echo "                            <td>$detail</td>" >> ${REPORT_DIR}/smoke-test-report.html
+                                    echo "                        </tr>" >> ${REPORT_DIR}/smoke-test-report.html
+                                    ;;
+                            esac
+                        done < ${WORKSPACE}/test-results.txt
+
+                        cat >> ${REPORT_DIR}/smoke-test-report.html << 'TABLE_BACKEND_END'
+                    </tbody>
+                </table>
+            </div>
+TABLE_BACKEND_END
+
+                        # 生成前端测试表格
+                        cat >> ${REPORT_DIR}/smoke-test-report.html << 'TABLE_FRONTEND'
+            <div class="service-group">
+                <h2 class="section-title">🌐 前端服务</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>服务</th>
+                            <th>状态</th>
+                            <th>详情</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+TABLE_FRONTEND
+
+                        # 解析前端结果
+                        while IFS='|' read -r name result detail; do
+                            case "$name" in
+                                FRONTEND)
+                                    status_class="pass"
+                                    [ "$result" = "FAIL" ] && status_class="fail"
+                                    echo "                        <tr>" >> ${REPORT_DIR}/smoke-test-report.html
+                                    echo "                            <td>Frontend Web</td>" >> ${REPORT_DIR}/smoke-test-report.html
+                                    echo "                            <td><span class=\"status $status_class\">$result</span></td>" >> ${REPORT_DIR}/smoke-test-report.html
+                                    echo "                            <td>$detail</td>" >> ${REPORT_DIR}/smoke-test-report.html
+                                    echo "                        </tr>" >> ${REPORT_DIR}/smoke-test-report.html
+                                    ;;
+                            esac
+                        done < ${WORKSPACE}/test-results.txt
+
+                        cat >> ${REPORT_DIR}/smoke-test-report.html << 'TABLE_FRONTEND_END'
+                    </tbody>
+                </table>
+            </div>
+TABLE_FRONTEND_END
+
+                        # 计算统计
+                        TOTAL=$(wc -l < ${WORKSPACE}/test-results.txt)
+                        PASSED=$(grep -c "|PASS|" ${WORKSPACE}/test-results.txt || echo "0")
+                        FAILED=$(grep -c "|FAIL|" ${WORKSPACE}/test-results.txt || echo "0")
+
+                        # 替换统计数字
+                        sed -i "s/id=\"total-count\">-</id=\"total-count\">$TOTAL<" ${REPORT_DIR}/smoke-test-report.html
+                        sed -i "s/id=\"passed-count\">-</id=\"passed-count\">$PASSED<" ${REPORT_DIR}/smoke-test-report.html
+                        sed -i "s/id=\"failed-count\">-</id=\"failed-count\">$FAILED<" ${REPORT_DIR}/smoke-test-report.html
+
+                        # 替换时间戳
+                        TIMESTAMP=$(date "+%Y-%m-%d %H:%M:%S")
+                        sed -i "s/TIMESTAMP/$TIMESTAMP/" ${REPORT_DIR}/smoke-test-report.html
+
+                        # 添加尾部
+                        cat >> ${REPORT_DIR}/smoke-test-report.html << 'HTML_FOOT'
+            <div class="footer">
+                <p>Generated by DocMan Jenkins Pipeline</p>
+                <p>测试环境: ${GATEWAY_URL}</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+HTML_FOOT
+
+                        # 替换环境变量
+                        sed -i "s|\${GATEWAY_URL}|${GATEWAY_URL}|g" ${REPORT_DIR}/smoke-test-report.html
+
+                        echo "=== 测试报告已生成 ==="
+                        ls -la ${REPORT_DIR}/smoke-test-report.html
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                echo "=== 清理工作 ==="
+                sh '''
+                    # 输出测试结果摘要
+                    echo ""
+                    echo "=========================================="
+                    echo "         冒烟测试结果摘要"
+                    echo "=========================================="
+                    cat ${WORKSPACE}/test-results.txt | while IFS='|' read -r name result detail; do
+                        if [ "$result" = "PASS" ]; then
+                            echo "✅ $name: $result"
+                        else
+                            echo "❌ $name: $result - $detail"
+                        fi
+                    done
+                    echo "=========================================="
+
+                    # 统计
+                    TOTAL=$(wc -l < ${WORKSPACE}/test-results.txt)
+                    PASSED=$(grep -c "|PASS|" ${WORKSPACE}/test-results.txt || echo "0")
+                    FAILED=$(grep -c "|FAIL|" ${WORKSPACE}/test-results.txt || echo "0")
+                    echo ""
+                    echo "总计: $TOTAL | 通过: $PASSED | 失败: $FAILED"
+                '''
+            }
+        }
+        success {
+            script {
+                echo "=== 部署 + 冒烟测试成功 ==="
+            }
+        }
+        failure {
+            script {
+                echo "=== 部署或测试失败 ==="
+            }
+        }
+    }
+}

@@ -1,0 +1,503 @@
+pipeline {
+    agent any
+
+    environment {
+        // 服务器配置
+        DEPLOY_HOST = "${DEPLOY_HOST:-192.168.145.252}"
+        GATEWAY_URL = "http://${DEPLOY_HOST}:9080"
+        FRONTEND_URL = "http://${DEPLOY_HOST}:3000"
+
+        // 中间件配置
+        MYSQL_HOST = "${MYSQL_HOST:-192.168.145.252}"
+        REDIS_HOST = "${REDIS_HOST:-192.168.145.252}"
+        ES_HOST = "${ES_HOST:-192.168.145.252}"
+        MINIO_HOST = "${MINIO_HOST:-192.168.145.252}"
+
+        // Docker 配置
+        DOCKER_REGISTRY = "${DOCKER_REGISTRY:-localhost:5000}"
+        BACKEND_IMAGE = 'docman-backend'
+        FRONTEND_IMAGE = 'docman-frontend'
+
+        // Maven 配置
+        MAVEN_SETTINGS = 'jenkins/nexus-maven-settings.xml'
+    }
+
+    stages {
+        stage('检查环境') {
+            steps {
+                script {
+                    echo "=== 检查构建环境 ==="
+                    sh '''
+                        echo "Java 版本:"
+                        java -version 2>&1 | head -1
+
+                        echo "Maven 版本:"
+                        mvn -version 2>&1 | head -1
+
+                        echo "Docker 版本:"
+                        docker --version
+                    '''
+                }
+            }
+        }
+
+        stage('构建后端') {
+            steps {
+                script {
+                    echo "=== 构建后端 ==="
+                    sh '''
+                        cd /Users/infodba/Documents/01_codes/docman
+
+                        # 使用 Nexus 镜像加速
+                        mvn clean package -Pstandalone -DskipTests \
+                            -Dmaven.repo.remote=https://maven.aliyun.com/repository/public
+
+                        echo "后端构建完成"
+                        ls -la docman-*/target/*.jar 2>/dev/null | head -5
+                    '''
+                }
+            }
+        }
+
+        stage('构建 Docker 镜像') {
+            steps {
+                script {
+                    echo "=== 构建 Docker 镜像 ==="
+                    sh '''
+                        cd /Users/infodba/Documents/01_codes/docman
+
+                        # 构建后端镜像
+                        docker build \
+                            -f docker/Dockerfile-backend \
+                            -t ${BACKEND_IMAGE}:${BUILD_NUMBER} \
+                            -t ${BACKEND_IMAGE}:latest \
+                            --build-arg SPRING_PROFILES_ACTIVE=standalone \
+                            --build-arg MYSQL_HOST=${MYSQL_HOST} \
+                            --build-arg REDIS_HOST=${REDIS_HOST} \
+                            --build-arg ES_HOST=${ES_HOST} \
+                            --build-arg MINIO_ENDPOINT=http://${MINIO_HOST}:9000 \
+                            .
+
+                        echo "后端镜像构建完成"
+                        docker images | grep ${BACKEND_IMAGE}
+                    '''
+                }
+            }
+        }
+
+        stage('部署后端服务') {
+            steps {
+                script {
+                    echo "=== 部署后端服务 ==="
+                    sh '''
+                        cd /Users/infodba/Documents/01_codes/docman
+
+                        # 停止旧容器
+                        docker stop docman-backend 2>/dev/null || true
+                        docker rm docman-backend 2>/dev/null || true
+
+                        # 启动新容器
+                        docker run -d \
+                            --name docman-backend \
+                            --restart unless-stopped \
+                            -p 9080-9091:9080-9091 \
+                            -e SPRING_PROFILES_ACTIVE=standalone \
+                            -e MYSQL_HOST=${MYSQL_HOST} \
+                            -e MYSQL_PORT=3306 \
+                            -e MYSQL_USER=root \
+                            -e MYSQL_PASSWORD=root123 \
+                            -e MYSQL_DATABASE=docman \
+                            -e REDIS_HOST=${REDIS_HOST} \
+                            -e REDIS_PORT=6379 \
+                            -e ES_HOST=${ES_HOST} \
+                            -e MINIO_ENDPOINT=http://${MINIO_HOST}:9000 \
+                            -e MINIO_ACCESS_KEY=minioadmin \
+                            -e MINIO_SECRET_KEY=minioadmin \
+                            -e NACOS_HOST=${DEPLOY_HOST} \
+                            -e NACOS_PORT=8848 \
+                            -e JVM_XMS=512m \
+                            -e JVM_XMX=2g \
+                            --network docman-network \
+                            ${BACKEND_IMAGE}:latest
+
+                        echo "等待服务启动..."
+                        sleep 30
+
+                        echo "容器状态:"
+                        docker ps | grep docman || echo "容器未运行"
+                    '''
+                }
+            }
+        }
+
+        stage('冒烟测试') {
+            steps {
+                script {
+                    echo "=== 执行冒烟测试 ==="
+                    sh '''
+                        # 初始化测试结果
+                        rm -f ${WORKSPACE}/test-results.txt
+                        mkdir -p ${WORKSPACE}/test-reports
+
+                        # ========== 中间件测试 ==========
+
+                        # 测试 MySQL
+                        echo "测试 MySQL..."
+                        MYSQL_RESULT="FAIL"
+                        MYSQL_DETAIL=""
+                        if docker exec docman-mysql mysqladmin ping -h localhost -u root -proot123 &>/dev/null; then
+                            MYSQL_RESULT="PASS"
+                            MYSQL_DETAIL="MySQL 连接成功"
+                        else
+                            MYSQL_DETAIL="MySQL 连接失败"
+                        fi
+                        echo "MYSQL|$MYSQL_RESULT|$MYSQL_DETAIL" >> ${WORKSPACE}/test-results.txt
+
+                        # 测试 Redis
+                        echo "测试 Redis..."
+                        REDIS_RESULT="FAIL"
+                        REDIS_DETAIL=""
+                        if docker exec docman-redis redis-cli ping 2>/dev/null | grep -q PONG; then
+                            REDIS_RESULT="PASS"
+                            REDIS_DETAIL="Redis 连接成功"
+                        else
+                            REDIS_DETAIL="Redis 连接失败"
+                        fi
+                        echo "REDIS|$REDIS_RESULT|$REDIS_DETAIL" >> ${WORKSPACE}/test-results.txt
+
+                        # 测试 Elasticsearch
+                        echo "测试 Elasticsearch..."
+                        ES_RESULT="FAIL"
+                        ES_DETAIL=""
+                        if curl -sf http://${ES_HOST}:9200/_cluster/health 2>/dev/null | grep -q "status"; then
+                            ES_RESULT="PASS"
+                            ES_DETAIL="Elasticsearch 集群健康"
+                        else
+                            ES_DETAIL="Elasticsearch 无响应"
+                        fi
+                        echo "ELASTICSEARCH|$ES_RESULT|$ES_DETAIL" >> ${WORKSPACE}/test-results.txt
+
+                        # 测试 MinIO
+                        echo "测试 MinIO..."
+                        MINIO_RESULT="FAIL"
+                        MINIO_DETAIL=""
+                        if curl -sf http://${MINIO_HOST}:9000/minio/health/live 2>/dev/null | grep -q "true"; then
+                            MINIO_RESULT="PASS"
+                            MINIO_DETAIL="MinIO 服务正常"
+                        else
+                            MINIO_DETAIL="MinIO 无响应"
+                        fi
+                        echo "MINIO|$MINIO_RESULT|$MINIO_DETAIL" >> ${WORKSPACE}/test-results.txt
+
+                        # ========== 后端服务测试 ==========
+
+                        # 测试 Gateway 健康检查
+                        echo "测试 Gateway..."
+                        GATEWAY_RESULT="FAIL"
+                        GATEWAY_DETAIL=""
+                        GATEWAY_CODE=$(curl -sf -o /dev/null -w "%{http_code}" http://${GATEWAY_URL}/actuator/health 2>/dev/null || echo "000")
+                        if [ "$GATEWAY_CODE" = "200" ]; then
+                            GATEWAY_RESULT="PASS"
+                            GATEWAY_DETAIL="HTTP $GATEWAY_CODE - 服务健康"
+                        else
+                            GATEWAY_DETAIL="期望 200, 实际 $GATEWAY_CODE"
+                        fi
+                        echo "GATEWAY|$GATEWAY_RESULT|$GATEWAY_DETAIL" >> ${WORKSPACE}/test-results.txt
+
+                        # 测试用户服务
+                        echo "测试用户服务..."
+                        USER_RESULT="FAIL"
+                        USER_DETAIL=""
+                        USER_CODE=$(curl -sf -o /dev/null -w "%{http_code}" http://${GATEWAY_URL}/api/auth/health 2>/dev/null || echo "000")
+                        if [ "$USER_CODE" = "200" ] || [ "$USER_CODE" = "404" ]; then
+                            USER_RESULT="PASS"
+                            USER_DETAIL="HTTP $USER_CODE - 服务可达"
+                        else
+                            USER_DETAIL="期望 200/404, 实际 $USER_CODE"
+                        fi
+                        echo "USER_SERVICE|$USER_RESULT|$USER_DETAIL" >> ${WORKSPACE}/test-results.txt
+
+                        # 测试文档服务
+                        echo "测试文档服务..."
+                        DOC_RESULT="FAIL"
+                        DOC_DETAIL=""
+                        DOC_CODE=$(curl -sf -o /dev/null -w "%{http_code}" http://${GATEWAY_URL}/api/documents/health 2>/dev/null || echo "000")
+                        if [ "$DOC_CODE" = "200" ] || [ "$DOC_CODE" = "404" ]; then
+                            DOC_RESULT="PASS"
+                            DOC_DETAIL="HTTP $DOC_CODE - 服务可达"
+                        else
+                            DOC_DETAIL="期望 200/404, 实际 $DOC_CODE"
+                        fi
+                        echo "DOCUMENT_SERVICE|$DOC_RESULT|$DOC_DETAIL" >> ${WORKSPACE}/test-results.txt
+
+                        # 测试存储服务
+                        echo "测试存储服务..."
+                        STORAGE_RESULT="FAIL"
+                        STORAGE_DETAIL=""
+                        STORAGE_CODE=$(curl -sf -o /dev/null -w "%{http_code}" http://${GATEWAY_URL}/api/storage/health 2>/dev/null || echo "000")
+                        if [ "$STORAGE_CODE" = "200" ] || [ "$STORAGE_CODE" = "404" ]; then
+                            STORAGE_RESULT="PASS"
+                            STORAGE_DETAIL="HTTP $STORAGE_CODE - 服务可达"
+                        else
+                            STORAGE_DETAIL="期望 200/404, 实际 $STORAGE_CODE"
+                        fi
+                        echo "STORAGE_SERVICE|$STORAGE_RESULT|$STORAGE_DETAIL" >> ${WORKSPACE}/test-results.txt
+
+                        # 测试搜索服务
+                        echo "测试搜索服务..."
+                        SEARCH_RESULT="FAIL"
+                        SEARCH_DETAIL=""
+                        SEARCH_CODE=$(curl -sf -o /dev/null -w "%{http_code}" http://${GATEWAY_URL}/api/search/health 2>/dev/null || echo "000")
+                        if [ "$SEARCH_CODE" = "200" ] || [ "$SEARCH_CODE" = "404" ]; then
+                            SEARCH_RESULT="PASS"
+                            SEARCH_DETAIL="HTTP $SEARCH_CODE - 服务可达"
+                        else
+                            SEARCH_DETAIL="期望 200/404, 实际 $SEARCH_CODE"
+                        fi
+                        echo "SEARCH_SERVICE|$SEARCH_RESULT|$SEARCH_DETAIL" >> ${WORKSPACE}/test-results.txt
+
+                        echo "测试完成，共 $(wc -l < ${WORKSPACE}/test-results.txt) 项"
+                    '''
+                }
+            }
+        }
+
+        stage('生成测试报告') {
+            steps {
+                script {
+                    echo "=== 生成 HTML 测试报告 ==="
+                    sh '''
+                        # 生成测试报告
+                        cat > ${WORKSPACE}/test-reports/smoke-test-report.html << 'HTML_HEAD'
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocMan 冒烟测试报告</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, '"'"'Segoe UI'"'"', Roboto, '"'"'Helvetica Neue'"'"', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+        .header h1 { font-size: 2.5em; margin-bottom: 10px; }
+        .header .timestamp { opacity: 0.9; font-size: 1.1em; }
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: #f8f9fa;
+        }
+        .summary-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .summary-card.total { border-left: 4px solid #667eea; }
+        .summary-card.passed { border-left: 4px solid #28a745; }
+        .summary-card.failed { border-left: 4px solid #dc3545; }
+        .summary-card .number { font-size: 3em; font-weight: bold; color: #333; }
+        .summary-card.passed .number { color: #28a745; }
+        .summary-card.failed .number { color: #dc3545; }
+        .summary-card .label { color: #666; font-size: 1em; margin-top: 5px; }
+        .content { padding: 30px; }
+        .section-title {
+            font-size: 1.5em;
+            color: #333;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+        td { padding: 12px 15px; border-bottom: 1px solid #eee; }
+        tr:hover { background: #f8f9fa; }
+        tr:last-child td { border-bottom: none; }
+        .status {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        .status.pass { background: #d4edda; color: #155724; }
+        .status.fail { background: #f8d7da; color: #721c24; }
+        .service-group { margin-bottom: 40px; }
+        .footer {
+            background: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            color: #666;
+            border-top: 1px solid #eee;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏠 DocMan 冒烟测试报告</h1>
+            <p class="timestamp">测试时间: TIMESTAMP</p>
+        </div>
+
+        <div class="summary">
+            <div class="summary-card total">
+                <div class="number" id="total-count">-</div>
+                <div class="label">总测试数</div>
+            </div>
+            <div class="summary-card passed">
+                <div class="number" id="passed-count">-</div>
+                <div class="label">通过</div>
+            </div>
+            <div class="summary-card failed">
+                <div class="number" id="failed-count">-</div>
+                <div class="label">失败</div>
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="service-group">
+                <h2 class="section-title">🔧 中间件服务</h2>
+                <table>
+                    <thead>
+                        <tr><th>服务</th><th>状态</th><th>详情</th></tr>
+                    </thead>
+                    <tbody>
+MIDDLEWARE_ROWS
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="service-group">
+                <h2 class="section-title">⚙️ 后端服务</h2>
+                <table>
+                    <thead>
+                        <tr><th>服务</th><th>状态</th><th>详情</th></tr>
+                    </thead>
+                    <tbody>
+BACKEND_ROWS
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="footer">
+                <p>Generated by DocMan Jenkins Pipeline | Build #${BUILD_NUMBER}</p>
+                <p>测试环境: GATEWAY_URL</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+HTML_HEAD
+
+                        # 处理测试结果，生成表格行
+                        MIDDLEWARE_ROWS=""
+                        BACKEND_ROWS=""
+
+                        while IFS='|' read -r name result detail; do
+                            status_class="pass"
+                            [ "$result" = "FAIL" ] && status_class="fail"
+                            row="                        <tr><td>$name</td><td><span class=\"status $status_class\">$result</span></td><td>$detail</td></tr>"
+
+                            case "$name" in
+                                MYSQL|REDIS|ELASTICSEARCH|MINIO)
+                                    MIDDLEWARE_ROWS="${MIDDLEWARE_ROWS}${row}"$'"'"'\n'"'"'
+                                    ;;
+                                GATEWAY|USER_SERVICE|DOCUMENT_SERVICE|STORAGE_SERVICE|SEARCH_SERVICE)
+                                    display_name=$(echo "$name" | sed '"'"'s/_/ /g'"'"')
+                                    BACKEND_ROWS="${BACKEND_ROWS}${row}"$'"'"'\n'"'"'
+                                    ;;
+                            esac
+                        done < ${WORKSPACE}/test-results.txt
+
+                        # 替换行数据
+                        sed -i 's/MIDDLEWARE_ROWS/'"${MIDDLEWARE_ROWS}"'/' ${WORKSPACE}/test-reports/smoke-test-report.html
+                        sed -i 's/BACKEND_ROWS/'"${BACKEND_ROWS}"'/' ${WORKSPACE}/test-reports/smoke-test-report.html
+
+                        # 计算统计
+                        TOTAL=$(wc -l < ${WORKSPACE}/test-results.txt)
+                        PASSED=$(grep -c "|PASS|" ${WORKSPACE}/test-results.txt || echo "0")
+                        FAILED=$(grep -c "|FAIL|" ${WORKSPACE}/test-results.txt || echo "0")
+
+                        # 替换统计和时间戳
+                        sed -i "s/id=\"total-count\">-</id=\"total-count\">$TOTAL</" ${WORKSPACE}/test-reports/smoke-test-report.html
+                        sed -i "s/id=\"passed-count\">-</id=\"passed-count\">$PASSED</" ${WORKSPACE}/test-reports/smoke-test-report.html
+                        sed -i "s/id=\"failed-count\">-</id=\"failed-count\">$FAILED</" ${WORKSPACE}/test-reports/smoke-test-report.html
+                        sed -i "s/TIMESTAMP/$(date "+%Y-%m-%d %H:%M:%S")/" ${WORKSPACE}/test-reports/smoke-test-report.html
+                        sed -i "s/GATEWAY_URL/${GATEWAY_URL}/" ${WORKSPACE}/test-reports/smoke-test-report.html
+
+                        echo "=== 测试报告已生成 ==="
+                        ls -la ${WORKSPACE}/test-reports/smoke-test-report.html
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                echo "=========================================="
+                echo "         冒烟测试结果摘要"
+                echo "=========================================="
+                sh '''
+                    cat ${WORKSPACE}/test-results.txt 2>/dev/null | while IFS='|' read -r name result detail; do
+                        if [ "$result" = "PASS" ]; then
+                            echo "✅ $name: $result"
+                        else
+                            echo "❌ $name: $result - $detail"
+                        fi
+                    done
+                    echo "=========================================="
+                    TOTAL=$(wc -l < ${WORKSPACE}/test-results.txt 2>/dev/null || echo "0")
+                    PASSED=$(grep -c "|PASS|" ${WORKSPACE}/test-results.txt 2>/dev/null || echo "0")
+                    FAILED=$(grep -c "|FAIL|" ${WORKSPACE}/test-results.txt 2>/dev/null || echo "0")
+                    echo ""
+                    echo "总计: $TOTAL | 通过: $PASSED | 失败: $FAILED"
+                '''
+            }
+        }
+        success {
+            echo "=========================================="
+            echo "🎉 部署 + 冒烟测试成功!"
+            echo "=========================================="
+        }
+        failure {
+            echo "=========================================="
+            echo "❌ 部署或测试失败，请检查日志"
+            echo "=========================================="
+        }
+    }
+}
