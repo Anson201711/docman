@@ -17,7 +17,7 @@ COPY docman-frontend/package.json ./
 COPY docman-frontend/package-lock.json ./
 
 # Install dependencies
-RUN npm ci --only=production=false
+RUN npm ci
 
 # Copy source code
 COPY docman-frontend/ ./
