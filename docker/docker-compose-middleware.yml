@@ -39,16 +39,13 @@ services:
   redis:
     image: redis:7-alpine
     container_name: docman-redis
+    restart: always
     ports:
       - "6379:6379"
-    environment:
-      - REDIS_PASSWORD=1234
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
     volumes:
       - redis-data:/data
     networks:
       - docman-network
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
