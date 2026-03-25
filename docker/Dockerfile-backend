@@ -91,22 +91,101 @@ PROFILE=\${PROFILE:-standalone}
 
 echo "Starting DocMan in \$PROFILE mode..."
 
+start_service() {
+    local name=\$1
+    local jar=\$2
+    local port=\$3
+    shift 3
+    echo "Starting \$name on port \$port..."
+    java -jar "\$jar" --server.port=\$port "\@" &
+}
+
 case "\$PROFILE" in
     standalone)
-        echo "Starting all-in-one DocMan application..."
-        java -jar /app/docman.jar --spring.profiles.active=\$PROFILE \
-            -Dserver.port=\${GATEWAY_PORT:-8080} \
-            -Dspring.cloud.nacos.discovery.server-addr=\${NACOS_HOST:-nacos:8848} \
-            -Dspring.datasource.url=jdbc:mysql://\${MYSQL_HOST:-mysql}:3306/docman?useUnicode=true \
-            -Dspring.datasource.username=\${MYSQL_USER:-root} \
-            -Dspring.datasource.password=\${MYSQL_PASSWORD:-password} \
-            -Dspring.data.redis.host=\${REDIS_HOST:-redis} \
-            -Dspring.data.redis.port=\${REDIS_PORT:-6379} \
-            -Dspring.data.redis.password=\${REDIS_PASSWORD:-} \
-            -Delasticsearch.uris=\${ES_HOST:-elasticsearch}:9200 \
-            -Dminio.endpoint=\${MINIO_ENDPOINT:-http://minio:9000} \
-            -Dminio.access-key=\${MINIO_ACCESS_KEY:-minioadmin} \
-            -Dminio.secret-key=\${MINIO_SECRET_KEY:-minioadmin}
+        echo "Starting all DocMan services..."
+
+        # Start Gateway (API Gateway)
+        start_service "Gateway" "/app/docman.jar" \${GATEWAY_PORT:-8080} \
+            --spring.profiles.active=standalone \
+            --spring.cloud.nacos.discovery.server-addr=\${NACOS_HOST:-nacos:8848}
+
+        # Start User Service
+        start_service "User Service" "/app/docman-user.jar" \${USER_PORT:-8081} \
+            --spring.datasource.url=jdbc:mysql://\${MYSQL_HOST:-mysql}:3306/docman_user?useUnicode=true \
+            --spring.datasource.username=\${MYSQL_USER:-root} \
+            --spring.datasource.password=\${MYSQL_PASSWORD:-root123} \
+            --spring.data.redis.host=\${REDIS_HOST:-redis} \
+            --spring.data.redis.port=\${REDIS_PORT:-6379} \
+            --spring.data.redis.password=\${REDIS_PASSWORD:-}
+
+        # Start Document Service
+        start_service "Document Service" "/app/docman-document.jar" \${DOCUMENT_PORT:-8082} \
+            --spring.datasource.url=jdbc:mysql://\${MYSQL_HOST:-mysql}:3306/docman_document?useUnicode=true \
+            --spring.datasource.username=\${MYSQL_USER:-root} \
+            --spring.datasource.password=\${MYSQL_PASSWORD:-root123} \
+            --spring.data.redis.host=\${REDIS_HOST:-redis} \
+            --spring.data.redis.port=\${REDIS_PORT:-6379}
+
+        # Start Storage Service
+        start_service "Storage Service" "/app/docman-storage.jar" \${STORAGE_PORT:-8083} \
+            --spring.data.redis.host=\${REDIS_HOST:-redis} \
+            --spring.data.redis.port=\${REDIS_PORT:-6379} \
+            --minio.endpoint=\${MINIO_ENDPOINT:-http://minio:9000} \
+            --minio.access-key=\${MINIO_ACCESS_KEY:-minioadmin} \
+            --minio.secret-key=\${MINIO_SECRET_KEY:-minioadmin}
+
+        # Start Search Service
+        start_service "Search Service" "/app/docman-search.jar" \${SEARCH_PORT:-8084} \
+            --spring.data.redis.host=\${REDIS_HOST:-redis} \
+            --spring.data.redis.port=\${REDIS_PORT:-6379} \
+            --elasticsearch.uris=\${ES_HOST:-elasticsearch}:9200
+
+        # Start Version Service
+        start_service "Version Service" "/app/docman-version.jar" \${VERSION_PORT:-8085} \
+            --spring.datasource.url=jdbc:mysql://\${MYSQL_HOST:-mysql}:3306/docman?useUnicode=true \
+            --spring.datasource.username=\${MYSQL_USER:-root} \
+            --spring.datasource.password=\${MYSQL_PASSWORD:-root123}
+
+        # Start Classification Service
+        start_service "Classification Service" "/app/docman-classification.jar" \${CLASSIFICATION_PORT:-8086} \
+            --spring.datasource.url=jdbc:mysql://\${MYSQL_HOST:-mysql}:3306/docman?useUnicode=true \
+            --spring.datasource.username=\${MYSQL_USER:-root} \
+            --spring.datasource.password=\${MYSQL_PASSWORD:-root123}
+
+        # Start Approval Service
+        start_service "Approval Service" "/app/docman-approval.jar" \${APPROVAL_PORT:-8087} \
+            --spring.datasource.url=jdbc:mysql://\${MYSQL_HOST:-mysql}:3306/docman?useUnicode=true \
+            --spring.datasource.username=\${MYSQL_USER:-root} \
+            --spring.datasource.password=\${MYSQL_PASSWORD:-root123}
+
+        # Start Subscription Service
+        start_service "Subscription Service" "/app/docman-subscription.jar" \${SUBSCRIPTION_PORT:-8088} \
+            --spring.data.redis.host=\${REDIS_HOST:-redis} \
+            --spring.data.redis.port=\${REDIS_PORT:-6379}
+
+        # Start Collaboration Service
+        start_service "Collaboration Service" "/app/docman-collaboration.jar" \${COLLABORATION_PORT:-8089} \
+            --spring.datasource.url=jdbc:mysql://\${MYSQL_HOST:-mysql}:3306/docman?useUnicode=true \
+            --spring.datasource.username=\${MYSQL_USER:-root} \
+            --spring.datasource.password=\${MYSQL_PASSWORD:-root123}
+
+        # Start CAD Service
+        start_service "CAD Service" "/app/docman-cad.jar" \${CAD_PORT:-8090} \
+            --minio.endpoint=\${MINIO_ENDPOINT:-http://minio:9000} \
+            --minio.access-key=\${MINIO_ACCESS_KEY:-minioadmin} \
+            --minio.secret-key=\${MINIO_SECRET_KEY:-minioadmin}
+
+        # Start System Service
+        start_service "System Service" "/app/docman-system.jar" \${SYSTEM_PORT:-8091} \
+            --spring.datasource.url=jdbc:mysql://\${MYSQL_HOST:-mysql}:3306/docman?useUnicode=true \
+            --spring.datasource.username=\${MYSQL_USER:-root} \
+            --spring.datasource.password=\${MYSQL_PASSWORD:-root123}
+
+        echo "All services started. Waiting for health checks..."
+        sleep 30
+
+        # Keep container running
+        tail -f /dev/null
         ;;
     *)
         echo "Unknown profile: \$PROFILE"
@@ -122,6 +201,6 @@ RUN chown -R docman:docman /app
 
 USER docman
 
-EXPOSE 8080 8081 8082 8083 8084 8085 8086 8087 8088 9089 8090 8091
+EXPOSE 8080 8081 8082 8083 8084 8085 8086 8087 8088 8090 8091
 
 ENTRYPOINT ["/app/entrypoint.sh"]
