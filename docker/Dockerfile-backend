@@ -23,6 +23,9 @@ COPY docman-collaboration/pom.xml docman-collaboration/
 COPY docman-cad/pom.xml docman-cad/
 COPY docman-system/pom.xml docman-system/
 
+# Install parent POM to local repository first
+RUN mvn install -N -B
+
 # Download dependencies
 RUN mvn dependency:go-offline -B
 
