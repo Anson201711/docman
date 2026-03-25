@@ -2,6 +2,11 @@
 -- DocMan Database Initialization Script
 -- ============================================
 
+-- Allow root access from any IP
+CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY 'root123';
+GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
+FLUSH PRIVILEGES;
+
 -- Create databases for each microservice
 CREATE DATABASE IF NOT EXISTS docman_user CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS docman_document CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
