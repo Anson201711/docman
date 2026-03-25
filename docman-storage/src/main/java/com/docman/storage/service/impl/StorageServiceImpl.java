@@ -78,18 +78,19 @@ public class StorageServiceImpl implements StorageService {
             // Ensure bucket exists
             ensureBucketExists(minioConfig.getBucketName());
 
-            // Upload to MinIO using putObject
+            // Upload to MinIO
             String contentType = file.getContentType();
             if (contentType == null) {
                 contentType = "application/octet-stream";
             }
 
             minioClient.putObject(
-                    minioConfig.getBucketName(),
-                    objectName,
-                    file.getInputStream(),
-                    file.getSize(),
-                    contentType
+                    PutObjectArgs.builder()
+                            .bucket(minioConfig.getBucketName())
+                            .object(objectName)
+                            .stream(file.getInputStream(), file.getSize(), -1)
+                            .contentType(contentType)
+                            .build()
             );
 
             // Create storage record
@@ -137,89 +138,11 @@ public class StorageServiceImpl implements StorageService {
         }
     }
 
-    @Override
-    @Transactional
-    public FileUploadResponse uploadFileByInputStream(InputStream inputStream, String fileName, String contentType, Long fileSize, String userId, String documentId) {
-        try {
-            // Check quota
-            if (!checkQuota(userId, fileSize)) {
-                throw new RuntimeException("Insufficient storage quota");
-            }
-
-            // Validate file
-            if (!isValidExtension(getFileExtension(fileName))) {
-                throw new RuntimeException("File type not allowed");
-            }
-
-            // Ensure bucket exists
-            ensureBucketExists(minioConfig.getBucketName());
-
-            // Generate object name
-            String objectName = generateObjectName(fileName);
-
-            // Upload to MinIO
-            if (contentType == null) {
-                contentType = "application/octet-stream";
-            }
-
-            minioClient.putObject(
-                    minioConfig.getBucketName(),
-                    objectName,
-                    inputStream,
-                    fileSize,
-                    contentType
-            );
-
-            // Create storage record
-            String fileId = UUID.randomUUID().toString();
-            String extension = getFileExtension(fileName);
-
-            StorageRecord record = StorageRecord.builder()
-                    .fileId(fileId)
-                    .fileName(fileName)
-                    .extension(extension)
-                    .contentType(contentType)
-                    .fileSize(fileSize)
-                    .objectName(objectName)
-                    .bucketName(minioConfig.getBucketName())
-                    .userId(userId)
-                    .documentId(documentId)
-                    .status(STATUS_COMPLETED)
-                    .build();
-
-            storageRecordMapper.insert(record);
-
-            // Update quota usage
-            updateQuotaUsage(userId, fileSize, true);
-
-            // Generate download URL
-            String downloadUrl = String.format("%s/%s/%s",
-                    minioConfig.getEndpoint(),
-                    minioConfig.getBucketName(),
-                    objectName);
-
-            return FileUploadResponse.builder()
-                    .fileId(fileId)
-                    .fileName(fileName)
-                    .extension(extension)
-                    .contentType(contentType)
-                    .fileSize(fileSize)
-                    .objectName(objectName)
-                    .downloadUrl(downloadUrl)
-                    .status(STATUS_COMPLETED)
-                    .build();
-
-        } catch (Exception e) {
-            log.error("Failed to upload file by input stream: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to upload file: " + e.getMessage(), e);
-        }
-    }
-
     // ==================== Multipart Upload (Simplified) ====================
 
     @Override
     @Transactional
-    public MultipartInitResponse initMultipartUpload(String fileName, String contentType, Long fileSize, String userId, String documentId) {
+    public MultipartInitResponse initMultipartUpload(String fileName, Long fileSize, String contentType, String userId, String documentId) {
         try {
             // Validate file
             if (!isValidExtension(getFileExtension(fileName))) {
@@ -303,24 +226,17 @@ public class StorageServiceImpl implements StorageService {
                 throw new RuntimeException("Multipart upload is not in UPLOADING state");
             }
 
-            // Upload part to MinIO - for simplicity, we upload the entire file at once
-            // In a real implementation, you would use the MinIO multipart upload API
+            // Upload part to MinIO
             ByteArrayInputStream bais = new ByteArrayInputStream(data);
 
-            if (partNumber == 1) {
-                // First part - create or overwrite the object
-                minioClient.putObject(
-                        minioConfig.getBucketName(),
-                        upload.getObjectName(),
-                        bais,
-                        (long) data.length,
-                        upload.getContentType()
-                );
-            } else {
-                // Subsequent parts - in a simplified implementation, we skip this
-                // A full implementation would use composeObject or separate part uploads
-                log.warn("Simplified multipart upload: only single-part upload is fully supported");
-            }
+            minioClient.putObject(
+                    PutObjectArgs.builder()
+                            .bucket(upload.getBucketName())
+                            .object(upload.getObjectName())
+                            .stream(bais, (long) data.length, -1)
+                            .contentType(upload.getContentType())
+                            .build()
+            );
 
             // Update uploaded parts count
             upload.setUploadedParts(upload.getUploadedParts() + 1);
@@ -420,7 +336,7 @@ public class StorageServiceImpl implements StorageService {
     }
 
     @Override
-    public com.docman.storage.entity.MultipartUpload getMultipartUploadStatus(String uploadId, String userId) {
+    public MultipartUpload getMultipartUploadStatus(String uploadId, String userId) {
         return findMultipartUpload(uploadId, userId);
     }
 
@@ -445,6 +361,11 @@ public class StorageServiceImpl implements StorageService {
             log.error("Failed to download file: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to download file: " + e.getMessage(), e);
         }
+    }
+
+    @Override
+    public StorageRecord getFileInfo(String fileId, String userId) {
+        return findStorageRecord(fileId, userId);
     }
 
     // ==================== File Delete ====================
@@ -480,9 +401,61 @@ public class StorageServiceImpl implements StorageService {
         }
     }
 
-    // ==================== Presigned URLs ====================
+    @Override
+    @Transactional
+    public void deleteFileByObjectName(String objectName, String userId) {
+        try {
+            // Find storage record by object name
+            LambdaQueryWrapper<StorageRecord> queryWrapper = new LambdaQueryWrapper<>();
+            queryWrapper.eq(StorageRecord::getObjectName, objectName)
+                    .eq(StorageRecord::getUserId, userId);
+            StorageRecord record = storageRecordMapper.selectOne(queryWrapper);
+
+            if (record == null) {
+                throw new RuntimeException("Storage record not found for object: " + objectName);
+            }
+
+            // Delete from MinIO
+            minioClient.removeObject(
+                    RemoveObjectArgs.builder()
+                            .bucket(minioConfig.getBucketName())
+                            .object(objectName)
+                            .build()
+            );
+
+            // Delete record from database
+            storageRecordMapper.deleteById(record);
+
+            // Update quota usage
+            updateQuotaUsage(userId, record.getFileSize(), false);
+
+            log.info("File deleted: objectName={}", objectName);
+
+        } catch (Exception e) {
+            log.error("Failed to delete file: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to delete file: " + e.getMessage(), e);
+        }
+    }
 
     @Override
+    @Transactional
+    public void batchDeleteFiles(List<String> fileIds, String userId) {
+        for (String fileId : fileIds) {
+            try {
+                deleteFile(fileId, userId);
+            } catch (Exception e) {
+                log.error("Failed to delete file {}: {}", fileId, e.getMessage());
+            }
+        }
+    }
+
+    // ==================== Presigned URL ====================
+
+    @Override
+    public PresignedUrlResponse generatePresignedUrl(String fileId, Integer expiresIn, String userId) {
+        return generateDownloadPresignedUrl(fileId, expiresIn, userId);
+    }
+
     public PresignedUrlResponse generateDownloadPresignedUrl(String fileId, Integer expiresIn, String userId) {
         try {
             StorageRecord record = findStorageRecord(fileId, userId);
@@ -537,7 +510,7 @@ public class StorageServiceImpl implements StorageService {
             DateTimeFormatter formatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
             return PresignedUrlResponse.builder()
-                    .objectName(objectName)
+                    .fileName(objectName)
                     .presignedUrl(presignedUrl)
                     .expiresIn(expiry)
                     .expiresAt(expiresAt.format(formatter))
@@ -552,7 +525,20 @@ public class StorageServiceImpl implements StorageService {
     // ==================== Storage Quota ====================
 
     @Override
-    public StorageQuota getStorageQuota(String userId) {
+    public StorageQuotaResponse getStorageQuota(String userId) {
+        StorageQuota quota = getStorageQuotaEntity(userId);
+
+        return StorageQuotaResponse.builder()
+                .userId(userId)
+                .maxQuota(quota.getMaxQuota())
+                .usedQuota(quota.getUsedQuota())
+                .availableQuota(quota.getMaxQuota() - quota.getUsedQuota())
+                .usagePercentage(quota.getMaxQuota() > 0 ? (double) quota.getUsedQuota() / quota.getMaxQuota() * 100 : 0.0)
+                .active(quota.getActive() == 1)
+                .build();
+    }
+
+    private StorageQuota getStorageQuotaEntity(String userId) {
         LambdaQueryWrapper<StorageQuota> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(StorageQuota::getUserId, userId);
         StorageQuota quota = storageQuotaMapper.selectOne(queryWrapper);
@@ -561,8 +547,9 @@ public class StorageServiceImpl implements StorageService {
             // Create default quota
             quota = StorageQuota.builder()
                     .userId(userId)
-                    .totalQuota(storageConfig.getDefaultQuota())
+                    .maxQuota(storageConfig.getDefaultQuota())
                     .usedQuota(0L)
+                    .active(1)
                     .build();
             storageQuotaMapper.insert(quota);
         }
@@ -572,27 +559,40 @@ public class StorageServiceImpl implements StorageService {
 
     @Override
     @Transactional
-    public void updateStorageQuota(String userId, Long newQuota) {
-        LambdaQueryWrapper<StorageQuota> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(StorageQuota::getUserId, userId);
-        StorageQuota quota = storageQuotaMapper.selectOne(queryWrapper);
-
-        if (quota == null) {
-            quota = StorageQuota.builder()
-                    .userId(userId)
-                    .totalQuota(newQuota)
-                    .usedQuota(0L)
-                    .build();
-            storageQuotaMapper.insert(quota);
-        } else {
-            quota.setTotalQuota(newQuota);
-            storageQuotaMapper.updateById(quota);
-        }
+    public void updateStorageQuota(String userId, Long maxQuota, String operatorId) {
+        StorageQuota quota = getStorageQuotaEntity(userId);
+        quota.setMaxQuota(maxQuota);
+        storageQuotaMapper.updateById(quota);
     }
 
-    // ==================== Helper Methods ====================
+    @Override
+    public boolean checkQuota(String userId, Long fileSize) {
+        StorageQuota quota = getStorageQuotaEntity(userId);
+        return (quota.getUsedQuota() + fileSize) <= quota.getMaxQuota();
+    }
 
-    private void ensureBucketExists(String bucketName) {
+    @Override
+    @Transactional
+    public void recalculateUsedQuota(String userId) {
+        // Calculate total used quota from storage records
+        LambdaQueryWrapper<StorageRecord> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(StorageRecord::getUserId, userId)
+                .eq(StorageRecord::getStatus, STATUS_COMPLETED);
+        List<StorageRecord> records = storageRecordMapper.selectList(queryWrapper);
+
+        long totalUsed = records.stream()
+                .mapToLong(r -> r.getFileSize() != null ? r.getFileSize() : 0)
+                .sum();
+
+        StorageQuota quota = getStorageQuotaEntity(userId);
+        quota.setUsedQuota(totalUsed);
+        storageQuotaMapper.updateById(quota);
+    }
+
+    // ==================== Bucket Operations ====================
+
+    @Override
+    public void ensureBucketExists(String bucketName) {
         try {
             boolean exists = minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucketName).build());
             if (!exists) {
@@ -605,13 +605,20 @@ public class StorageServiceImpl implements StorageService {
         }
     }
 
-    private boolean checkQuota(String userId, Long fileSize) {
-        StorageQuota quota = getStorageQuota(userId);
-        return (quota.getUsedQuota() + fileSize) <= quota.getTotalQuota();
+    @Override
+    public List<StorageRecord> listFiles(String prefix, String userId) {
+        LambdaQueryWrapper<StorageRecord> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(StorageRecord::getUserId, userId);
+        if (prefix != null && !prefix.isEmpty()) {
+            queryWrapper.likeRight(StorageRecord::getObjectName, prefix);
+        }
+        return storageRecordMapper.selectList(queryWrapper);
     }
 
+    // ==================== Helper Methods ====================
+
     private void updateQuotaUsage(String userId, Long fileSize, boolean increase) {
-        StorageQuota quota = getStorageQuota(userId);
+        StorageQuota quota = getStorageQuotaEntity(userId);
         if (increase) {
             quota.setUsedQuota(quota.getUsedQuota() + fileSize);
         } else {
