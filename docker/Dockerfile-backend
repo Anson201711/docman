@@ -16,20 +16,13 @@ RUN mkdir -p /usr/share/maven/ref/conf && \
 COPY pom.xml .
 COPY docman-*/pom.xml docman-/
 
-# Install parent POM
-RUN mvn install -N -B -s /usr/share/maven/ref/conf/settings.xml
-
-# Download dependencies
-RUN mvn dependency:go-offline -B -s /usr/share/maven/ref/conf/settings.xml
-
-# Copy source code
+# Copy source code (needed before dependency resolution)
 COPY docman-*/src docman-*/src
 
 # Build arguments
 ARG PROFILE=standalone
-ARG SPRING_PROFILES_ACTIVE=standalone
 
-# Build the application
+# Build the application (package will download dependencies as needed)
 RUN mvn clean package -P${PROFILE} -DskipTests -B -s /usr/share/maven/ref/conf/settings.xml
 
 # ============================================
