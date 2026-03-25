@@ -1,10 +1,14 @@
 package com.docman.search.config;
 
-import org.elasticsearch.client.RestHighLevelClient;
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.json.jackson.JacksonJsonpMapper;
+import co.elastic.clients.transport.ElasticsearchTransport;
+import co.elastic.clients.transport.rest_client.RestClientTransport;
+import org.apache.http.HttpHost;
+import org.elasticsearch.client.RestClient;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.data.elasticsearch.client.ElasticsearchRestTemplate;
-import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
@@ -12,6 +16,19 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 @Configuration
 public class SearchConfig {
+
+    @Value("${spring.elasticsearch.uris:localhost:9200}")
+    private String elasticsearchUri;
+
+    @Bean
+    public ElasticsearchClient elasticsearchClient() {
+        String host = elasticsearchUri.split(":")[0];
+        int port = elasticsearchUri.contains(":") ? Integer.parseInt(elasticsearchUri.split(":")[1]) : 9200;
+
+        RestClient restClient = RestClient.builder(new HttpHost(host, port, "http")).build();
+        ElasticsearchTransport transport = new RestClientTransport(restClient, new JacksonJsonpMapper());
+        return new ElasticsearchClient(transport);
+    }
 
     @Bean
     public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
