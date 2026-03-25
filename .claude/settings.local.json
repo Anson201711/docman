@@ -8,7 +8,22 @@
       "Bash(git push:*)",
       "Bash(git config:*)",
       "Bash(GIT_TERMINAL_PROMPT=0 git add -A)",
-      "Bash(chmod +x /Users/infodba/Documents/01_codes/docman/jenkins/deploy.sh)"
+      "Bash(chmod +x /Users/infodba/Documents/01_codes/docman/jenkins/deploy.sh)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://192.168.145.252:8089/api/json)",
+      "Bash(./create-jobs.sh)",
+      "Bash(curl:*)",
+      "Bash(java -version)",
+      "Bash(chmod +x /Users/infodba/Documents/01_codes/docman/jenkins/create-jobs.sh)",
+      "Bash(/Users/infodba/Documents/01_codes/docman/jenkins/create-jobs.sh)",
+      "Bash(npm run:*)",
+      "Bash(npm install:*)",
+      "Bash(git reset:*)",
+      "Bash(git checkout:*)",
+      "Bash(mvn wrapper:wrapper -Dmaven=3.9.6)",
+      "Bash(chmod +x /Users/infodba/Documents/01_codes/docman/jenkins/*.sh)",
+      "Bash(for pom:*)",
+      "Bash(do sed:*)",
+      "Bash(done)"
     ]
   }
 }
