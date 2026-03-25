@@ -21,7 +21,7 @@ import io.minio.UploadPartArgs;
 import io.minio.ListPartsArgs;
 import io.minio.CompleteMultipartUploadArgs;
 import io.minio.AbortMultipartUploadArgs;
-import io.minio.http.Method;
+import io.minio.http.Http;
 import io.minio.messages.Part;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -448,7 +448,7 @@ public class StorageServiceImpl implements StorageService {
 
             String presignedUrl = minioClient.getPresignedObjectUrl(
                     GetPresignedObjectUrlArgs.builder()
-                            .method(Method.GET)
+                            .method(Http.Method.GET)
                             .bucket(record.getBucketName())
                             .object(record.getObjectName())
                             .expiry(expiry)
@@ -483,7 +483,7 @@ public class StorageServiceImpl implements StorageService {
 
             String presignedUrl = minioClient.getPresignedObjectUrl(
                     GetPresignedObjectUrlArgs.builder()
-                            .method(Method.PUT)
+                            .method(Http.Method.PUT)
                             .bucket(minioConfig.getBucketName())
                             .object(objectName)
                             .expiry(expiry)
