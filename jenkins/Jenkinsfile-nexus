@@ -1,0 +1,196 @@
+pipeline {
+    agent any
+
+    environment {
+        NEXUS_VERSION = '3.65.0'
+        NEXUS_DATA_DIR = '/opt/nexus-data'
+        NEXUS_PORT = '8081'
+        DOCKER_REGISTRY = 'docker.io'
+        DOCKER_IMAGE = 'sonatype/nexus3'
+    }
+
+    stages {
+        stage('准备环境') {
+            steps {
+                script {
+                    echo "=== 准备 Nexus 部署环境 ==="
+                    sh '''
+                        # 检查 Docker 是否运行
+                        if ! docker info > /dev/null 2>&1; then
+                            echo "Docker 未运行，正在启动..."
+                            systemctl start docker || service docker start
+                            sleep 5
+                        fi
+
+                        # 创建网络（如果不存在）
+                        docker network create docman-network 2>/dev/null || true
+                    '''
+                }
+            }
+        }
+
+        stage('拉取 Nexus 镜像') {
+            steps {
+                script {
+                    echo "=== 拉取 Nexus3 镜像 ==="
+                    sh """
+                        # 使用代理/镜像加速（如果配置）
+                        if [ -n "\${MIRROR_URL}" ]; then
+                            echo "使用镜像源: \${MIRROR_URL}"
+                            docker pull \${MIRROR_URL}/sonatype/nexus3:${NEXUS_VERSION} || \
+                            docker pull ${DOCKER_IMAGE}:${NEXUS_VERSION}
+                        else
+                            docker pull ${DOCKER_IMAGE}:${NEXUS_VERSION}
+                        fi
+
+                        # 打标签
+                        docker tag ${DOCKER_IMAGE}:${NEXUS_VERSION} docman-nexus:${NEXUS_VERSION}
+                        docker tag ${DOCKER_IMAGE}:${NEXUS_VERSION} docman-nexus:latest
+                    """
+                }
+            }
+        }
+
+        stage('创建 Nexus 数据目录') {
+            steps {
+                script {
+                    echo "=== 创建 Nexus 数据目录 ==="
+                    sh """
+                        # 创建数据目录
+                        sudo mkdir -p ${NEXUS_DATA_DIR}
+                        sudo chown -R 200:200 ${NEXUS_DATA_DIR}
+                        sudo chmod -R 755 ${NEXUS_DATA_DIR}
+                    """
+                }
+            }
+        }
+
+        stage('停止并删除旧容器') {
+            steps {
+                script {
+                    echo "=== 停止旧容器 ==="
+                    sh '''
+                        docker stop docman-nexus 2>/dev/null || true
+                        docker rm docman-nexus 2>/dev/null || true
+                    '''
+                }
+            }
+        }
+
+        stage('启动 Nexus 容器') {
+            steps {
+                script {
+                    echo "=== 启动 Nexus 容器 ==="
+                    sh """
+                        docker run -d \\
+                            --name docman-nexus \\
+                            --network docman-network \\
+                            -p ${NEXUS_PORT}:8081 \\
+                            -v ${NEXUS_DATA_DIR}:/nexus-data \\
+                            -e INSTALL4J_ADD_VM_PARAMS="-Xms512m -Xmx2048m -XX:MaxDirectMemorySize=2048m" \\
+                            docman-nexus:${NEXUS_VERSION}
+
+                        echo "Nexus 容器已启动"
+                    """
+                }
+            }
+        }
+
+        stage('等待 Nexus 就绪') {
+            steps {
+                script {
+                    echo "=== 等待 Nexus 就绪 ==="
+                    sh '''
+                        # 等待 Nexus 启动（最多等待 180 秒）
+                        MAX_WAIT=180
+                        COUNTER=0
+
+                        while [ $COUNTER -lt $MAX_WAIT ]; do
+                            if curl -sf http://localhost:'${NEXUS_PORT}'/repository/maven-public/ > /dev/null 2>&1 || \
+                               curl -sf http://localhost:'${NEXUS_PORT}'/nexus/status > /dev/null 2>&1; then
+                                echo "Nexus 已就绪!"
+                                break
+                            fi
+
+                            echo "等待 Nexus 启动... ($COUNTER/$MAX_WAIT)"
+                            sleep 5
+                            COUNTER=$((COUNTER + 5))
+                        done
+
+                        if [ $COUNTER -ge $MAX_WAIT ]; then
+                            echo "Nexus 启动超时!"
+                            exit 1
+                        fi
+                    '''
+                }
+            }
+        }
+
+        stage('配置 Nexus') {
+            steps {
+                script {
+                    echo "=== 配置 Nexus 仓库 ==="
+                    sh '''
+                        # 等待管理员密码生成
+                        sleep 30
+
+                        # 获取初始管理员密码
+                        ADMIN_PASSWORD=$(docker exec docman-nexus cat /nexus-data/admin.password 2>/dev/null || echo "admin123")
+
+                        echo "=== Nexus 配置完成 ==="
+                        echo "访问地址: http://localhost:'${NEXUS_PORT}'"
+                        echo "默认用户名: admin"
+                        echo "默认密码: $ADMIN_PASSWORD"
+                    '''
+                }
+            }
+        }
+
+        stage('推送镜像到本地仓库') {
+            steps {
+                script {
+                    echo "=== 推送镜像到本地 ==="
+                    sh '''
+                        # 为 Nexus 镜像打本地标签
+                        docker tag docman-nexus:${NEXUS_VERSION} localhost:5000/docman-nexus:${NEXUS_VERSION}
+                        docker tag docman-nexus:latest localhost:5000/docman-nexus:latest
+
+                        # 推送（如果本地 registry 可用）
+                        docker push localhost:5000/docman-nexus:${NEXUS_VERSION} 2>/dev/null || true
+                        docker push localhost:5000/docman-nexus:latest 2>/dev/null || true
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            script {
+                echo "=== Nexus 部署成功 ==="
+                echo "访问地址: http://192.168.145.252:${NEXUS_PORT}"
+                echo "管理界面: http://192.168.145.252:${NEXUS_PORT}/nexus"
+            }
+        }
+        failure {
+            script {
+                echo "=== Nexus 部署失败 ==="
+                sh '''
+                    docker logs docman-nexus --tail 100
+                '''
+            }
+        }
+        always {
+            script {
+                echo "=== 构建信息 ==="
+                sh '''
+                    echo "容器状态:"
+                    docker ps -a | grep nexus || echo "无 Nexus 容器"
+                    echo ""
+                    echo "镜像列表:"
+                    docker images | grep nexus
+                '''
+            }
+        }
+    }
+}

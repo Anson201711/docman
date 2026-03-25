@@ -1,0 +1,213 @@
+pipeline {
+    agent any
+
+    environment {
+        MAVEN_VERSION = '3.9.6'
+        JAVA_VERSION = '17'
+        NEXUS_URL = 'http://192.168.145.252:8081'
+        MAVEN_SETTINGS = 'jenkins/nexus-maven-settings.xml'
+        BACKEND_IMAGE = 'docman-backend'
+        FRONTEND_IMAGE = 'docman-frontend'
+        DOCKER_REGISTRY = 'docker.io'
+    }
+
+    stages {
+        stage('检查环境') {
+            steps {
+                script {
+                    echo "=== 检查构建环境 ==="
+                    sh '''
+                        echo "Java 版本:"
+                        java -version 2>&1 || echo "Java 未安装"
+
+                        echo "Maven 版本:"
+                        mvn -version 2>&1 || echo "Maven 未安装"
+
+                        echo "Docker 版本:"
+                        docker --version 2>&1 || echo "Docker 未安装"
+                    '''
+                }
+            }
+        }
+
+        stage('准备 Maven 配置') {
+            steps {
+                script {
+                    echo "=== 配置 Maven 使用 Nexus 镜像 ==="
+                    sh '''
+                        # 备份原有 settings
+                        if [ -f ~/.m2/settings.xml ]; then
+                            cp ~/.m2/settings.xml ~/.m2/settings.xml.bak
+                        fi
+
+                        # 使用项目配置的 Maven settings
+                        mkdir -p ~/.m2
+                        cp ${MAVEN_SETTINGS} ~/.m2/settings.xml
+
+                        echo "Maven settings 已配置"
+                        cat ~/.m2/settings.xml | grep -A2 "<mirrors>" | head -10
+                    '''
+                }
+            }
+        }
+
+        stage('构建后端') {
+            steps {
+                script {
+                    echo "=== 构建后端模块 ==="
+                    sh '''
+                        cd /Users/infodba/Documents/01_codes/docman
+
+                        # 使用 Nexus 镜像源加速构建
+                        mvn clean package -Pstandalone -DskipTests \
+                            -Dmaven.repo.remote=https://maven.aliyun.com/repository/public \
+                            -Dmaven.test.skip=true
+
+                        echo "后端构建完成"
+                        ls -la docman-*/target/*.jar 2>/dev/null | head -10
+                    '''
+                }
+            }
+        }
+
+        stage('构建前端') {
+            steps {
+                script {
+                    echo "=== 构建前端 ==="
+                    sh '''
+                        cd /Users/infodba/Documents/01_codes/docman/docman-frontend
+
+                        # 安装依赖（使用国内镜像加速）
+                        npm config set registry https://registry.npmmirror.com
+                        npm install
+
+                        # 构建
+                        npm run build
+
+                        echo "前端构建完成"
+                    '''
+                }
+            }
+        }
+
+        stage('构建后端 Docker 镜像') {
+            steps {
+                script {
+                    echo "=== 构建后端 Docker 镜像 ==="
+                    sh '''
+                        cd /Users/infodba/Documents/01_codes/docman
+
+                        # 使用多阶段构建，利用 Maven 缓存
+                        docker build \\
+                            --network docman-network \\
+                            -f docker/Dockerfile-backend \\
+                            -t ${BACKEND_IMAGE}:${BUILD_NUMBER} \\
+                            -t ${BACKEND_IMAGE}:latest \\
+                            --build-arg NEXUS_URL=${NEXUS_URL} \\
+                            .
+
+                        echo "后端镜像构建完成"
+                        docker images | grep ${BACKEND_IMAGE}
+                    '''
+                }
+            }
+        }
+
+        stage('构建前端 Docker 镜像') {
+            steps {
+                script {
+                    echo "=== 构建前端 Docker 镜像 ==="
+                    sh '''
+                        cd /Users/infodba/Documents/01_codes/docman
+
+                        docker build \\
+                            --network docman-network \\
+                            -f docker/Dockerfile-frontend \\
+                            -t ${FRONTEND_IMAGE}:${BUILD_NUMBER} \\
+                            -t ${FRONTEND_IMAGE}:latest \\
+                            --build-arg NEXT_PUBLIC_API_BASE_URL=http://192.168.145.252:9080 \\
+                            --build-arg NEXT_PUBLIC_GATEWAY_URL=http://192.168.145.252:9080 \\
+                            .
+
+                        echo "前端镜像构建完成"
+                        docker images | grep ${FRONTEND_IMAGE}
+                    '''
+                }
+            }
+        }
+
+        stage('推送镜像') {
+            steps {
+                script {
+                    echo "=== 推送镜像到仓库 ==="
+                    sh '''
+                        # 推送后端镜像
+                        docker tag ${BACKEND_IMAGE}:${BUILD_NUMBER} localhost:5000/${BACKEND_IMAGE}:${BUILD_NUMBER}
+                        docker push localhost:5000/${BACKEND_IMAGE}:${BUILD_NUMBER}
+
+                        # 推送前端镜像
+                        docker tag ${FRONTEND_IMAGE}:${BUILD_NUMBER} localhost:5000/${FRONTEND_IMAGE}:${BUILD_NUMBER}
+                        docker push localhost:5000/${FRONTEND_IMAGE}:${BUILD_NUMBER}
+
+                        echo "镜像推送完成"
+                    '''
+                }
+            }
+        }
+
+        stage('部署到测试环境') {
+            when {
+                expression { currentBuild.number % 5 == 0 }  // 每5次构建部署一次
+            }
+            steps {
+                script {
+                    echo "=== 部署到测试环境 ==="
+                    sh '''
+                        cd /Users/infodba/Documents/01_codes/docman
+
+                        # 使用 docker-compose 部署
+                        docker-compose -f docker/docker-compose-standalone.yml up -d
+
+                        echo "等待服务启动..."
+                        sleep 30
+
+                        # 健康检查
+                        curl -sf http://localhost:8080/actuator/health || echo "健康检查失败"
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            script {
+                echo "=== 构建成功 ==="
+                echo "后端镜像: ${BACKEND_IMAGE}:${BUILD_NUMBER}"
+                echo "前端镜像: ${FRONTEND_IMAGE}:${BUILD_NUMBER}"
+            }
+        }
+        failure {
+            script {
+                echo "=== 构建失败 ==="
+                sh '''
+                    echo "查看最近构建日志..."
+                '''
+            }
+        }
+        always {
+            script {
+                echo "=== 清理工作 ==="
+                sh '''
+                    # 恢复原始 Maven settings
+                    if [ -f ~/.m2/settings.xml.bak ]; then
+                        mv ~/.m2/settings.xml.bak ~/.m2/settings.xml
+                    fi
+
+                    # 清理旧镜像
+                    docker image prune -f
+                '''
+            }
+        }
+    }
+}

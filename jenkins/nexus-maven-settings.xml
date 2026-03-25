@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0 http://maven.apache.org/xsd/settings-1.2.0.xsd">
+
+    <!-- 认证信息 -->
+    <servers>
+        <!-- Nexus 认证 -->
+        <server>
+            <id>nexus-releases</id>
+            <username>admin</username>
+            <password>admin123</password>
+        </server>
+        <server>
+            <id>nexus-snapshots</id>
+            <username>admin</username>
+            <password>admin123</password>
+        </server>
+        <server>
+            <id>nexus-thirdparty</id>
+            <username>admin</username>
+            <password>admin123</password>
+        </server>
+        <!-- Docker Registry 认证 -->
+        <server>
+            <id>docker.io</id>
+            <username>${DOCKER_USERNAME}</username>
+            <password>${DOCKER_PASSWORD}</password>
+        </server>
+    </servers>
+
+    <!-- 镜像配置 - 使用 Nexus 加速编译 -->
+    <mirrors>
+        <!-- 主镜像：使用阿里云或其他国内镜像 -->
+        <mirror>
+            <id>aliyun-maven</id>
+            <name>Aliyun Maven Mirror</name>
+            <url>https://maven.aliyun.com/repository/public</url>
+            <mirrorOf>central</mirrorOf>
+        </mirror>
+
+        <!-- Nexus 私服镜像（部署后启用） -->
+        <mirror>
+            <id>nexus-mirror</id>
+            <name>Nexus Private Mirror</name>
+            <url>http://192.168.145.252:8081/repository/maven-public/</url>
+            <mirrorOf>*</mirrorOf>
+        </mirror>
+    </mirrors>
+
+    <!-- 代理配置（如果需要） -->
+    <!--
+    <proxies>
+        <proxy>
+            <id>http-proxy</id>
+            <active>true</active>
+            <protocol>http</protocol>
+            <host>proxy.example.com</host>
+            <port>8080</port>
+            <username>proxyuser</username>
+            <password>proxypass</password>
+            <nonProxyHosts>localhost|*.local|192.168.*</nonProxyHosts>
+        </proxy>
+    </proxies>
+    -->
+
+    <!-- 部署仓库配置 -->
+    <profiles>
+        <!-- Maven 中央仓库配置 -->
+        <profile>
+            <id>nexus</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activeByDefault>
+
+            <!-- 快照版仓库 -->
+            <repositories>
+                <repository>
+                    <id>nexus-snapshots</id>
+                    <name>Nexus Snapshots</name>
+                    <url>http://192.168.145.252:8081/repository/maven-snapshots/</url>
+                    <releases>
+                        <enabled>false</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>true</enabled>
+                        <updatePolicy>always</updatePolicy>
+                    </snapshots>
+                </repository>
+
+                <!-- 第三方仓库 -->
+                <repository>
+                    <id>nexus-thirdparty</id>
+                    <name>Nexus Third Party</name>
+                    <url>http://192.168.145.252:8081/repository/thirdparty/</url>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>false</enabled>
+                    </snapshots>
+                </repository>
+
+                <!-- 发布版仓库 -->
+                <repository>
+                    <id>nexus-releases</id>
+                    <name>Nexus Releases</name>
+                    <url>http://192.168.145.252:8081/repository/maven-releases/</url>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>false</enabled>
+                    </snapshots>
+                </repository>
+            </repositories>
+
+            <!-- 插件仓库 -->
+            <pluginRepositories>
+                <pluginRepository>
+                    <id>nexus-plugins</id>
+                    <name>Nexus Plugin Repository</name>
+                    <url>http://192.168.145.252:8081/repository/maven-public/</url>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>false</enabled>
+                    </snapshots>
+                </pluginRepository>
+            </pluginRepositories>
+        </profile>
+
+        <!-- Java 版本配置 -->
+        <profile>
+            <id>jdk-17</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <properties>
+                <maven.compiler.source>17</maven.compiler.source>
+                <maven.compiler.target>17</maven.compiler.target>
+                <maven.compiler.compilerVersion>17</maven.compiler.compilerVersion>
+            </properties>
+        </profile>
+    </profiles>
+
+    <!-- 激活的配置 -->
+    <activeProfiles>
+        <activeProfile>nexus</activeProfile>
+        <activeProfile>jdk-17</activeProfile>
+    </activeProfiles>
+</settings>
