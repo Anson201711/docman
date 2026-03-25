@@ -12,19 +12,18 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
-import jakarta.servlet.http.HttpServletRequest;
 import java.util.stream.Collectors;
 
 /**
- * Global exception handler
+ * Global exception handler - compatible with both servlet and reactive web frameworks
  */
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
-    public Result<?> handleBusinessException(BusinessException e, HttpServletRequest request) {
-        log.warn("Business exception at {}: {} - {}", request.getRequestURI(), e.getCode(), e.getMessage());
+    public Result<?> handleBusinessException(BusinessException e) {
+        log.warn("Business exception: {} - {}", e.getCode(), e.getMessage());
         return Result.fail(e.getCode(), e.getMessage());
     }
 
@@ -64,15 +63,15 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(NullPointerException.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    public Result<?> handleNullPointerException(NullPointerException e, HttpServletRequest request) {
-        log.error("Null pointer exception at {}", request.getRequestURI(), e);
+    public Result<?> handleNullPointerException(NullPointerException e) {
+        log.error("Null pointer exception", e);
         return Result.fail(ResultCode.INTERNAL_ERROR);
     }
 
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    public Result<?> handleException(Exception e, HttpServletRequest request) {
-        log.error("Unhandled exception at {}", request.getRequestURI(), e);
+    public Result<?> handleException(Exception e) {
+        log.error("Unhandled exception", e);
         return Result.fail(ResultCode.INTERNAL_ERROR);
     }
 }
