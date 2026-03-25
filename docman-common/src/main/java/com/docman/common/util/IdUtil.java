@@ -1,6 +1,5 @@
 package com.docman.common.util;
 
-import cn.hutool.core.util.IdUtil;
 import cn.hutool.crypto.digest.DigestUtil;
 
 import java.util.UUID;
