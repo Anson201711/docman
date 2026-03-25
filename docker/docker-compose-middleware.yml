@@ -41,6 +41,8 @@ services:
     container_name: docman-redis
     ports:
       - "6379:6379"
+    environment:
+      - REDIS_PASSWORD=1234
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
     volumes:
       - redis-data:/data
