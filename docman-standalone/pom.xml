@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.docman</groupId>
+        <artifactId>docman</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>docman-standalone</artifactId>
+    <packaging>jar</packaging>
+
+    <name>DocMan Standalone</name>
+    <description>DocMan Standalone - All-in-One JAR with embedded services</description>
+
+    <dependencies>
+        <!-- Gateway -->
+        <dependency>
+            <groupId>com.docman</groupId>
+            <artifactId>docman-gateway</artifactId>
+        </dependency>
+
+        <!-- User Service -->
+        <dependency>
+            <groupId>com.docman</groupId>
+            <artifactId>docman-user</artifactId>
+        </dependency>
+
+        <!-- Document Service -->
+        <dependency>
+            <groupId>com.docman</groupId>
+            <artifactId>docman-document</artifactId>
+        </dependency>
+
+        <!-- Storage Service -->
+        <dependency>
+            <groupId>com.docman</groupId>
+            <artifactId>docman-storage</artifactId>
+        </dependency>
+
+        <!-- Search Service -->
+        <dependency>
+            <groupId>com.docman</groupId>
+            <artifactId>docman-search</artifactId>
+        </dependency>
+
+        <!-- Version Service -->
+        <dependency>
+            <groupId>com.docman</groupId>
+            <artifactId>docman-version</artifactId>
+        </dependency>
+
+        <!-- Classification Service -->
+        <dependency>
+            <groupId>com.docman</groupId>
+            <artifactId>docman-classification</artifactId>
+        </dependency>
+
+        <!-- Approval Service -->
+        <dependency>
+            <groupId>com.docman</groupId>
+            <artifactId>docman-approval</artifactId>
+        </dependency>
+
+        <!-- Subscription Service -->
+        <dependency>
+            <groupId>com.docman</groupId>
+            <artifactId>docman-subscription</artifactId>
+        </dependency>
+
+        <!-- Collaboration Service -->
+        <dependency>
+            <groupId>com.docman</groupId>
+            <artifactId>docman-collaboration</artifactId>
+        </dependency>
+
+        <!-- CAD Service -->
+        <dependency>
+            <groupId>com.docman</groupId>
+            <artifactId>docman-cad</artifactId>
+        </dependency>
+
+        <!-- System Service -->
+        <dependency>
+            <groupId>com.docman</groupId>
+            <artifactId>docman-system</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>com.docman.standalone.application.StandaloneApplication</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

@@ -42,6 +42,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile-backend
+      target: runtime-distributed
       args:
         PROFILE: distributed
         SPRING_PROFILES_ACTIVE: distributed

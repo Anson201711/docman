@@ -26,6 +26,7 @@
         <module>docman-collaboration</module>
         <module>docman-cad</module>
         <module>docman-system</module>
+        <!-- Standalone module only included when -Pstandalone -->
     </modules>
 
     <properties>
@@ -258,19 +259,22 @@
     </build>
 
     <profiles>
-        <!-- 单机部署模式 -->
+        <!-- 单机部署模式 - 生成单一 fat JAR -->
         <profile>
             <id>standalone</id>
             <activation>
                 <activeByDefault>true</activeByDefault>
             </activation>
+            <modules>
+                <module>docman-standalone</module>
+            </modules>
             <properties>
                 <profile.name>standalone</profile.name>
                 <spring.profiles.active>standalone</spring.profiles.active>
             </properties>
         </profile>
 
-        <!-- 分布式部署模式 -->
+        <!-- 分布式部署模式 - 生成独立服务 JAR -->
         <profile>
             <id>distributed</id>
             <properties>
