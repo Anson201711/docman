@@ -12,17 +12,13 @@ WORKDIR /build
 RUN mkdir -p /usr/share/maven/ref/conf && \
     echo '<?xml version="1.0" encoding="UTF-8"?><settings><mirrors><mirror><id>aliyun</id><name>Aliyun Maven</name><url>https://maven.aliyun.com/repository/public</url><mirrorOf>central</mirrorOf></mirror></mirrors></settings>' > /usr/share/maven/ref/conf/settings.xml
 
-# Copy pom files
-COPY pom.xml .
-COPY docman-*/pom.xml docman-/
-
-# Copy source code (needed before dependency resolution)
-COPY docman-*/src docman-*/src
+# Copy entire project (pom.xml is at root, modules are at docman-*/)
+COPY . /build/
 
 # Build arguments
 ARG PROFILE=standalone
 
-# Build the application (package will download dependencies as needed)
+# Build the application
 RUN mvn clean package -P${PROFILE} -DskipTests -B -s /usr/share/maven/ref/conf/settings.xml
 
 # ============================================
