@@ -456,7 +456,7 @@ services:
         SPRING_PROFILES_ACTIVE: distributed
     container_name: docman-collaboration
     ports:
-      - "8089:8089"
+      - "9089:9089"
     environment:
       - SPRING_PROFILES_ACTIVE=distributed
       - PROFILE=distributed
@@ -484,7 +484,7 @@ services:
       - docman-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8089/actuator/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:9089/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 5

@@ -70,7 +70,7 @@ spring:
 
         # Collaboration Service
         - id: collaboration-service
-          uri: http://collaboration-service:8089
+          uri: http://collaboration-service:9089
           predicates:
             - Path=/api/collaborations/**
           filters:

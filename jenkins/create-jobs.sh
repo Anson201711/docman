@@ -4,7 +4,7 @@
 # Generates job configs and provides import instructions
 # ============================================
 
-JENKINS_URL="${JENKINS_URL:-http://192.168.145.252:8089}"
+JENKINS_URL="${JENKINS_URL:-http://192.168.145.252:9089}"
 JENKINS_USER="${JENKINS_USER:-infodba}"
 
 # Colors

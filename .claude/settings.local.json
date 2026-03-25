@@ -23,7 +23,22 @@
       "Bash(chmod +x /Users/infodba/Documents/01_codes/docman/jenkins/*.sh)",
       "Bash(for pom:*)",
       "Bash(do sed:*)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(mvn dependency:tree -pl docman-storage)",
+      "WebSearch",
+      "WebFetch(domain:min.io)",
+      "Bash(mvn dependency:list -pl docman-storage)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:minio-java.min.io)",
+      "Bash(mvn dependency:tree)",
+      "Bash(mvn help:effective-pom -pl docman-storage)",
+      "Bash(mvn compile:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:central.sonatype.com)",
+      "Bash(do)",
+      "Bash(sed -i '' 's/<version>1.0.0<\\\\/version>/<version>1.0.0-SNAPSHOT<\\\\/version>/g' \"$pom\")",
+      "Bash(cd:*)"
     ]
   }
 }
