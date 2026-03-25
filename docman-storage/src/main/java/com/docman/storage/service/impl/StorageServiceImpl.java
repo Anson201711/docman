@@ -12,7 +12,15 @@ import com.docman.storage.mapper.MultipartUploadMapper;
 import com.docman.storage.mapper.StorageQuotaMapper;
 import com.docman.storage.mapper.StorageRecordMapper;
 import com.docman.storage.service.StorageService;
-import io.minio.*;
+import io.minio.CreateMultipartUploadArgs;
+import io.minio.MinioClient;
+import io.minio.ObjectWriteResponse;
+import io.minio.StatObjectArgs;
+import io.minio.StatObjectResponse;
+import io.minio.UploadPartArgs;
+import io.minio.ListPartsArgs;
+import io.minio.CompleteMultipartUploadArgs;
+import io.minio.AbortMultipartUploadArgs;
 import io.minio.http.Method;
 import io.minio.messages.Part;
 import lombok.RequiredArgsConstructor;
@@ -167,15 +175,6 @@ public class StorageServiceImpl implements StorageService {
             int totalParts = (int) Math.ceil((double) fileSize / partSize);
 
             // Initialize multipart upload on MinIO
-            String uploadId = minioClient.composeObject(
-                    ComposeObjectArgs.builder()
-                            .bucket(minioConfig.getBucketName())
-                            .object(objectName)
-                            .build()
-            ).getUploadId();
-
-            // For actual multipart upload, we need to use different approach
-            // Using createMultipartUpload
             io.minio.messages.Upload multipartUpload = minioClient.createMultipartUpload(
                     CreateMultipartUploadArgs.builder()
                             .bucket(minioConfig.getBucketName())
@@ -184,7 +183,7 @@ public class StorageServiceImpl implements StorageService {
                             .build()
             );
 
-            uploadId = multipartUpload.uploadId();
+            String uploadId = multipartUpload.uploadId();
 
             // Create multipart upload record
             MultipartUpload upload = MultipartUpload.builder()
