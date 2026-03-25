@@ -1,5 +1,6 @@
 package com.docman.user.dto;
 
+import com.docman.user.vo.UserVO;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

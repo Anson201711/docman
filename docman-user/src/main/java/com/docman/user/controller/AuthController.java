@@ -2,6 +2,7 @@ package com.docman.user.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.docman.common.result.Result;
+import com.docman.user.dto.LoginRequest;
 import com.docman.user.dto.LoginResponse;
 import com.docman.user.dto.RegisterRequest;
 import com.docman.user.service.UserService;
