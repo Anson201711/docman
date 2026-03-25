@@ -1,0 +1,276 @@
+# ============================================
+# DocMan Backend Only Docker Compose
+# Starts only backend services (independent JARs)
+# Does NOT start MySQL, Redis, Elasticsearch, MinIO, Frontend
+# External middleware required
+# ============================================
+
+services:
+  # -----------------------------------------
+  # Gateway Service
+  # -----------------------------------------
+  gateway:
+    image: docman-backend:latest
+    container_name: docman-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - GATEWAY_PORT=8080
+      - NACOS_HOST=${NACOS_HOST:-nacos}
+      - NACOS_PORT=${NACOS_PORT:-8848}
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # -----------------------------------------
+  # User Service
+  # -----------------------------------------
+  user:
+    image: docman-backend:latest
+    container_name: docman-user
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - USER_PORT=8081
+      - NACOS_HOST=${NACOS_HOST:-nacos}
+      - NACOS_PORT=${NACOS_PORT:-8848}
+      - MYSQL_HOST=${MYSQL_HOST:-localhost}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_DATABASE=docman_user
+      - MYSQL_USER=${MYSQL_USER:-root}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-root123}
+      - REDIS_HOST=${REDIS_HOST:-localhost}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+    networks:
+      - docman-network
+    restart: unless-stopped
+
+  # -----------------------------------------
+  # Document Service
+  # -----------------------------------------
+  document:
+    image: docman-backend:latest
+    container_name: docman-document
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - DOCUMENT_PORT=8082
+      - NACOS_HOST=${NACOS_HOST:-nacos}
+      - NACOS_PORT=${NACOS_PORT:-8848}
+      - MYSQL_HOST=${MYSQL_HOST:-localhost}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_DATABASE=docman_document
+      - MYSQL_USER=${MYSQL_USER:-root}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-root123}
+      - REDIS_HOST=${REDIS_HOST:-localhost}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+    networks:
+      - docman-network
+    restart: unless-stopped
+
+  # -----------------------------------------
+  # Storage Service
+  # -----------------------------------------
+  storage:
+    image: docman-backend:latest
+    container_name: docman-storage
+    ports:
+      - "8083:8083"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - STORAGE_PORT=8083
+      - NACOS_HOST=${NACOS_HOST:-nacos}
+      - NACOS_PORT=${NACOS_PORT:-8848}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://localhost:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - REDIS_HOST=${REDIS_HOST:-localhost}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+    networks:
+      - docman-network
+    restart: unless-stopped
+
+  # -----------------------------------------
+  # Search Service
+  # -----------------------------------------
+  search:
+    image: docman-backend:latest
+    container_name: docman-search
+    ports:
+      - "8084:8084"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - SEARCH_PORT=8084
+      - NACOS_HOST=${NACOS_HOST:-nacos}
+      - NACOS_PORT=${NACOS_PORT:-8848}
+      - ES_HOST=${ES_HOST:-localhost}
+      - ES_PORT=${ES_PORT:-9200}
+      - REDIS_HOST=${REDIS_HOST:-localhost}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+    networks:
+      - docman-network
+    restart: unless-stopped
+
+  # -----------------------------------------
+  # Version Service
+  # -----------------------------------------
+  version:
+    image: docman-backend:latest
+    container_name: docman-version
+    ports:
+      - "8085:8085"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - VERSION_PORT=8085
+      - NACOS_HOST=${NACOS_HOST:-nacos}
+      - NACOS_PORT=${NACOS_PORT:-8848}
+      - MYSQL_HOST=${MYSQL_HOST:-localhost}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_DATABASE=docman
+      - MYSQL_USER=${MYSQL_USER:-root}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-root123}
+    networks:
+      - docman-network
+    restart: unless-stopped
+
+  # -----------------------------------------
+  # Classification Service
+  # -----------------------------------------
+  classification:
+    image: docman-backend:latest
+    container_name: docman-classification
+    ports:
+      - "8086:8086"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - CLASSIFICATION_PORT=8086
+      - NACOS_HOST=${NACOS_HOST:-nacos}
+      - NACOS_PORT=${NACOS_PORT:-8848}
+      - MYSQL_HOST=${MYSQL_HOST:-localhost}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_DATABASE=docman
+      - MYSQL_USER=${MYSQL_USER:-root}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-root123}
+    networks:
+      - docman-network
+    restart: unless-stopped
+
+  # -----------------------------------------
+  # Approval Service
+  # -----------------------------------------
+  approval:
+    image: docman-backend:latest
+    container_name: docman-approval
+    ports:
+      - "8087:8087"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - APPROVAL_PORT=8087
+      - NACOS_HOST=${NACOS_HOST:-nacos}
+      - NACOS_PORT=${NACOS_PORT:-8848}
+      - MYSQL_HOST=${MYSQL_HOST:-localhost}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_DATABASE=docman
+      - MYSQL_USER=${MYSQL_USER:-root}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-root123}
+    networks:
+      - docman-network
+    restart: unless-stopped
+
+  # -----------------------------------------
+  # Subscription Service
+  # -----------------------------------------
+  subscription:
+    image: docman-backend:latest
+    container_name: docman-subscription
+    ports:
+      - "8088:8088"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - SUBSCRIPTION_PORT=8088
+      - NACOS_HOST=${NACOS_HOST:-nacos}
+      - NACOS_PORT=${NACOS_PORT:-8848}
+      - REDIS_HOST=${REDIS_HOST:-localhost}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+    networks:
+      - docman-network
+    restart: unless-stopped
+
+  # -----------------------------------------
+  # Collaboration Service
+  # -----------------------------------------
+  collaboration:
+    image: docman-backend:latest
+    container_name: docman-collaboration
+    ports:
+      - "8089:8089"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - COLLABORATION_PORT=8089
+      - NACOS_HOST=${NACOS_HOST:-nacos}
+      - NACOS_PORT=${NACOS_PORT:-8848}
+      - MYSQL_HOST=${MYSQL_HOST:-localhost}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_DATABASE=docman
+      - MYSQL_USER=${MYSQL_USER:-root}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-root123}
+    networks:
+      - docman-network
+    restart: unless-stopped
+
+  # -----------------------------------------
+  # CAD Service
+  # -----------------------------------------
+  cad:
+    image: docman-backend:latest
+    container_name: docman-cad
+    ports:
+      - "8090:8090"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - CAD_PORT=8090
+      - NACOS_HOST=${NACOS_HOST:-nacos}
+      - NACOS_PORT=${NACOS_PORT:-8848}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://localhost:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+    networks:
+      - docman-network
+    restart: unless-stopped
+
+  # -----------------------------------------
+  # System Service
+  # -----------------------------------------
+  system:
+    image: docman-backend:latest
+    container_name: docman-system
+    ports:
+      - "8091:8091"
+    environment:
+      - SPRING_PROFILES_ACTIVE=distributed
+      - SYSTEM_PORT=8091
+      - NACOS_HOST=${NACOS_HOST:-nacos}
+      - NACOS_PORT=${NACOS_PORT:-8848}
+      - MYSQL_HOST=${MYSQL_HOST:-localhost}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_DATABASE=docman
+      - MYSQL_USER=${MYSQL_USER:-root}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-root123}
+    networks:
+      - docman-network
+    restart: unless-stopped
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  docman-network:
+    driver: bridge
