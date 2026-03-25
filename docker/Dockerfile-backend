@@ -72,8 +72,8 @@ COPY --from=builder /build/docman-collaboration/target/*.jar /app/docman-collabo
 COPY --from=builder /build/docman-cad/target/*.jar /app/docman-cad.jar
 COPY --from=builder /build/docman-system/target/*.jar /app/docman-system.jar
 
-# Copy distributed startup script
-COPY docker/scripts/start-distributed.sh /app/start.sh
+# Copy service start script
+COPY docker/scripts/start-service.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
 EXPOSE 8080 8081 8082 8083 8084 8085 8086 8087 8088 8089 8090 8091

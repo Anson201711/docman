@@ -1,0 +1,54 @@
+# ============================================
+# DocMan Backend Standalone Only Docker Compose
+# Starts single fat JAR (all services in one JVM)
+# Does NOT start MySQL, Redis, Elasticsearch, MinIO, Frontend
+# External middleware required
+# ============================================
+
+services:
+  # -----------------------------------------
+  # Backend - Standalone (All-in-One JAR)
+  # -----------------------------------------
+  backend:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile-backend
+      target: runtime-standalone
+    image: docman-backend-standalone:latest
+    container_name: docman-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=standalone
+      - GATEWAY_PORT=8080
+      - MYSQL_HOST=${MYSQL_HOST:-localhost}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-docman}
+      - MYSQL_USER=${MYSQL_USER:-root}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-root123}
+      - REDIS_HOST=${REDIS_HOST:-localhost}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - ES_HOST=${ES_HOST:-localhost}
+      - ES_PORT=${ES_PORT:-9200}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://localhost:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - JVM_XMS=${JVM_XMS:-512m}
+      - JVM_XMX=${JVM_XMX:-2g}
+    networks:
+      - docman-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  docman-network:
+    driver: bridge
