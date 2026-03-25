@@ -1,0 +1,17 @@
+FROM eclipse-temurin:17-jre-jammy AS runtime-standalone
+
+LABEL maintainer="DocMan Team"
+LABEL description="DocMan Backend - Standalone Mode (All-in-One)"
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
+COPY docman-standalone/target/*.jar /app/docman-standalone.jar
+
+COPY docker/scripts/start-standalone.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
+EXPOSE 8080
+
+ENTRYPOINT ["/app/start.sh"]
