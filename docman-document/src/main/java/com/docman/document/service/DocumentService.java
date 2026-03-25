@@ -2,6 +2,7 @@ package com.docman.document.service;
 
 import com.docman.document.dto.*;
 import com.docman.document.entity.Document;
+import com.docman.document.entity.DocumentPermission;
 
 import java.util.List;
 
