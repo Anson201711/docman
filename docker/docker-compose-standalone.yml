@@ -63,8 +63,8 @@ services:
       - PROFILE=standalone
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
-      - MYSQL_USER=docman
-      - MYSQL_PASSWORD=docman123
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=root123
       - MYSQL_DATABASE=docman
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -106,8 +106,8 @@ services:
       - "3306:3306"
     environment:
       - MYSQL_ROOT_PASSWORD=root123
-      - MYSQL_USER=docman
-      - MYSQL_PASSWORD=docman123
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=root123
       - MYSQL_DATABASE=docman
       - TZ=Asia/Shanghai
     volumes:

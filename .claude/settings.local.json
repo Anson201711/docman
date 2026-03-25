@@ -38,7 +38,20 @@
       "WebFetch(domain:central.sonatype.com)",
       "Bash(do)",
       "Bash(sed -i '' 's/<version>1.0.0<\\\\/version>/<version>1.0.0-SNAPSHOT<\\\\/version>/g' \"$pom\")",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(docker build:*)",
+      "Bash(mvn clean:*)",
+      "Bash(/usr/local/bin/mvn clean:*)",
+      "Bash(/usr/local/apache-maven-3.9.6/bin/mvn clean:*)",
+      "Bash(docker-compose -f docker/docker-compose-standalone.yml down docman-gateway)",
+      "Bash(docker-compose -f docker/docker-compose-standalone.yml up -d docman-gateway)",
+      "Bash(docker compose:*)",
+      "Bash(docker --version)",
+      "Bash(/usr/local/bin/docker-compose -f /Users/infodba/Documents/01_codes/docman/docker/docker-compose-standalone.yml down docman-gateway)",
+      "Bash(/Applications/Docker.app/Contents/Resources/bin/docker-compose -f /Users/infodba/Documents/01_codes/docman/docker/docker-compose-standalone.yml down docman-gateway 2>&1)",
+      "Bash(/usr/local/bin/docker info:*)",
+      "Bash(docker network:*)",
+      "Bash(git pull:*)"
     ]
   }
 }

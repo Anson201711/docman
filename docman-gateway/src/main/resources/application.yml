@@ -5,6 +5,20 @@ spring:
     name: docman-gateway
   cloud:
     gateway:
+      # Global CORS configuration
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOriginPatterns: "*"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: true
+            maxAge: 3600
       routes:
         # User Service
         - id: user-service

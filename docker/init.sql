@@ -508,7 +508,7 @@ INSERT INTO `docman_system`.`system_config` (`id`, `config_key`, `config_value`,
 ('11', 'jwt.refresh_expiration', '604800000', 'number', 'security', 'JWT refresh token expiration (ms)', 51, 1, 1);
 
 -- ============================================
--- Insert default admin user (password: admin123)
+-- Insert default admin user (password: root123)
 -- ============================================
 INSERT INTO `docman_user`.`users` (`id`, `username`, `email`, `password`, `real_name`, `status`, `type`, `created_by`, `created_time`) VALUES
 ('1', 'admin', 'admin@docman.com', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'System Administrator', 1, 1, 'system', NOW());

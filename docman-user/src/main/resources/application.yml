@@ -6,7 +6,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://${MYSQL_HOST:localhost}:3306/docman_user?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: ${MYSQL_USER:root}
-    password: ${MYSQL_PASSWORD:password}
+    password: ${MYSQL_PASSWORD:root123}
     type: com.alibaba.druid.pool.DruidDataSource
     druid:
       initial-size: 5
