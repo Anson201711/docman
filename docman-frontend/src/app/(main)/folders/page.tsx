@@ -18,6 +18,7 @@ const { Title } = Typography;
 
 export default function FoldersPage() {
   const { t } = useTranslation();
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);

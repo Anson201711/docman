@@ -6,7 +6,7 @@ import {
   SettingOutlined,
   LogoutOutlined,
   BellOutlined,
-  LanguageOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useRouter, usePathname } from 'next/navigation';
@@ -77,7 +77,7 @@ export default function Header() {
       </div>
 
       <Space size="middle">
-        <LanguageOutlined
+        <GlobalOutlined
           style={{ fontSize: 18, cursor: 'pointer' }}
           onClick={handleLanguageChange}
           title={language === 'zh' ? 'English' : '中文'}

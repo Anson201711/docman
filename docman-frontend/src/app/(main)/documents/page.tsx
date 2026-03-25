@@ -6,8 +6,8 @@ import {
   UploadOutlined,
   PlusOutlined,
   SearchOutlined,
-  GridOutlined,
-  ListOutlined,
+  AppstoreOutlined,
+  UnorderedListOutlined,
   FilterOutlined,
   SortAscendingOutlined,
 } from '@ant-design/icons';
@@ -146,7 +146,7 @@ export default function DocumentsPage() {
                 options={categories.map((c) => ({ label: c.name, value: c.id }))}
               />
               <Button
-                icon={viewMode === 'list' ? <GridOutlined /> : <ListOutlined />}
+                icon={viewMode === 'list' ? <AppstoreOutlined /> : <UnorderedListOutlined />}
                 onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
               />
             </Space>
