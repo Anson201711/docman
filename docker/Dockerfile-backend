@@ -8,15 +8,19 @@ FROM maven:3.9-eclipse-temurin-17 AS builder
 
 WORKDIR /build
 
+# Configure Maven to use Aliyun mirror
+RUN mkdir -p /usr/share/maven/ref/conf && \
+    echo '<?xml version="1.0" encoding="UTF-8"?><settings><mirrors><mirror><id>aliyun</id><name>Aliyun Maven</name><url>https://maven.aliyun.com/repository/public</url><mirrorOf>central</mirrorOf></mirror></mirrors></settings>' > /usr/share/maven/ref/conf/settings.xml
+
 # Copy pom files
 COPY pom.xml .
 COPY docman-*/pom.xml docman-/
 
 # Install parent POM
-RUN mvn install -N -B
+RUN mvn install -N -B -s /usr/share/maven/ref/conf/settings.xml
 
 # Download dependencies
-RUN mvn dependency:go-offline -B
+RUN mvn dependency:go-offline -B -s /usr/share/maven/ref/conf/settings.xml
 
 # Copy source code
 COPY docman-*/src docman-*/src
@@ -26,7 +30,7 @@ ARG PROFILE=standalone
 ARG SPRING_PROFILES_ACTIVE=standalone
 
 # Build the application
-RUN mvn clean package -P${PROFILE} -DskipTests -B
+RUN mvn clean package -P${PROFILE} -DskipTests -B -s /usr/share/maven/ref/conf/settings.xml
 
 # ============================================
 # Stage 2: Runtime - Standalone Mode
