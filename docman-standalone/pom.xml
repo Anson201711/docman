@@ -94,6 +94,12 @@
             <groupId>io.minio</groupId>
             <artifactId>minio</artifactId>
         </dependency>
+
+        <!-- Jedis for Redis health check -->
+        <dependency>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

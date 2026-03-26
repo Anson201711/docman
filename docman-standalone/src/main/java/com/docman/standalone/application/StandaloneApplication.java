@@ -8,9 +8,8 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.annotation.Order;
-import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
-import org.springframework.data.redis.connection.RedisConnectionFactory;
 import io.minio.MinioClient;
+import redis.clients.jedis.Jedis;
 
 /**
  * DocMan Standalone Application
@@ -33,6 +32,9 @@ public class StandaloneApplication {
 
     @Value("${spring.data.redis.port:6379}")
     private int redisPort;
+
+    @Value("${spring.data.redis.password:}")
+    private String redisPassword;
 
     @Value("${minio.endpoint:http://localhost:9000}")
     private String minioEndpoint;
@@ -61,14 +63,12 @@ public class StandaloneApplication {
 
     @Bean
     @Order(1)
-    public CommandLineRunner healthChecker(
-            RedisConnectionFactory redisFactory,
-            ElasticsearchOperations esOps) {
+    public CommandLineRunner healthChecker() {
         return args -> {
             printMiddlewareInfo();
-            checkRedis(redisFactory);
+            checkRedis();
             checkMinIO();
-            checkElasticsearch(esOps);
+            checkElasticsearch();
             printStartedBanner();
         };
     }
@@ -84,9 +84,12 @@ public class StandaloneApplication {
         log.info("");
     }
 
-    private void checkRedis(RedisConnectionFactory factory) {
-        try {
-            factory.getConnection().ping();
+    private void checkRedis() {
+        try (Jedis jedis = new Jedis(redisHost, redisPort)) {
+            if (redisPassword != null && !redisPassword.isEmpty()) {
+                jedis.auth(redisPassword);
+            }
+            jedis.ping();
             log.info("[Redis]         Connection: OK");
         } catch (Exception e) {
             log.warn("[Redis]         Connection: FAILED - {}", e.getMessage());
@@ -106,10 +109,20 @@ public class StandaloneApplication {
         }
     }
 
-    private void checkElasticsearch(ElasticsearchOperations ops) {
+    private void checkElasticsearch() {
         try {
-            ops.indexOps(Object.class).getMapping();
-            log.info("[Elasticsearch] Connection: OK");
+            java.net.URI uri = new java.net.URI(elasticsearchUri);
+            java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
+            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                .uri(uri)
+                .GET()
+                .build();
+            java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                log.info("[Elasticsearch] Connection: OK");
+            } else {
+                log.warn("[Elasticsearch] Connection: FAILED - HTTP {}", response.statusCode());
+            }
         } catch (Exception e) {
             log.warn("[Elasticsearch] Connection: FAILED - {}", e.getMessage());
         }
