@@ -1,5 +1,6 @@
 package com.docman.standalone.application;
 
+import org.mybatis.spring.annotation.MapperScan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,6 +18,19 @@ import redis.clients.jedis.Jedis;
  * All-in-One JAR containing all services
  */
 @SpringBootApplication(scanBasePackages = "com.docman")
+@MapperScan({
+    "com.docman.document.repository",
+    "com.docman.user.repository",
+    "com.docman.storage.repository",
+    "com.docman.search.repository",
+    "com.docman.version.repository",
+    "com.docman.classification.repository",
+    "com.docman.approval.repository",
+    "com.docman.subscription.repository",
+    "com.docman.collaboration.repository",
+    "com.docman.cad.repository",
+    "com.docman.system.repository"
+})
 public class StandaloneApplication {
 
     private static final Logger log = LoggerFactory.getLogger(StandaloneApplication.class);
