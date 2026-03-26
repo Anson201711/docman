@@ -7,29 +7,9 @@ spring:
   application:
     name: docman-standalone
 
-  # Embedded server configuration (only Gateway port needed)
+  # Web server configuration (MVC for standalone)
   main:
-    web-application-type: reactive
-
-  # Cloud Gateway CORS (required for standalone mode)
-  cloud:
-    gateway:
-      globalcors:
-        cors-configurations:
-          '[/**]':
-            allowedOriginPatterns: "*"
-            allowedMethods:
-              - GET
-              - POST
-              - PUT
-              - DELETE
-              - OPTIONS
-            allowedHeaders: "*"
-            allowCredentials: true
-            exposedHeaders:
-              - Authorization
-              - Content-Disposition
-            maxAge: 3600
+    web-application-type: servlet
 
   # Disable unnecessary auto-configurations
   autoconfigure:
