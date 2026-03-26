@@ -62,3 +62,14 @@ logging:
   level:
     root: INFO
     com.docman: DEBUG
+
+# MinIO
+minio:
+  endpoint: http://${MINIO_HOST:localhost}:${MINIO_PORT:9000}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  bucket: ${MINIO_BUCKET:docman-documents}
+
+# Elasticsearch
+spring.elasticsearch:
+  uris: http://${ES_HOST:localhost}:${ES_PORT:9200}
