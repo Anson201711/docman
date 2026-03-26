@@ -5,7 +5,7 @@
 
 services:
   # -----------------------------------------
-  # Nginx API Gateway
+  # Nginx API Gateway (with Frontend)
   # -----------------------------------------
   nginx:
     build:
@@ -13,9 +13,12 @@ services:
       dockerfile: docker/Dockerfile-nginx
     container_name: docman-nginx
     ports:
+      - "80:80"
       - "8080:8080"
     depends_on:
       backend:
+        condition: service_healthy
+      frontend:
         condition: service_healthy
     networks:
       - docman-network
@@ -34,10 +37,8 @@ services:
       context: ..
       dockerfile: Dockerfile-frontend
     container_name: docman-frontend
-    ports:
-      - "3000:3000"
-    depends_on:
-      - backend
+    expose:
+      - "3000"
     networks:
       - docman-network
     restart: unless-stopped
