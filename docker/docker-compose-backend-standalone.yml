@@ -14,7 +14,7 @@ services:
       dockerfile: docker/nginx.standalone.conf
     container_name: docman-nginx
     ports:
-      - "9080:8080"
+      - "89:89"
     depends_on:
       backend:
         condition: service_healthy
@@ -33,7 +33,7 @@ services:
     image: docman-backend-standalone:latest
     container_name: docman-backend
     ports:
-      - "8081:8080"
+      - "9080:8080"
     environment:
       - SERVICE_JAR=docman-standalone.jar
       - SPRING_PROFILES_ACTIVE=standalone
