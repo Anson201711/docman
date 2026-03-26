@@ -10,7 +10,6 @@ services:
   # -----------------------------------------
   nginx:
     build:
-      context: .
       dockerfile: docker/nginx.standalone.conf
     container_name: docman-nginx
     ports:
@@ -27,7 +26,6 @@ services:
   # -----------------------------------------
   backend:
     build:
-      context: .
       dockerfile: docker/Dockerfile-backend
       target: runtime-standalone
     image: docman-backend-standalone:latest
