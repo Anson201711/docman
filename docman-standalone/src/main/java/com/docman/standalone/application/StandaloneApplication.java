@@ -11,7 +11,6 @@ import org.springframework.core.annotation.Order;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import io.minio.MinioClient;
-import io.minio.params.bucket.BucketExistsArgs;
 
 /**
  * DocMan Standalone Application
@@ -100,7 +99,7 @@ public class StandaloneApplication {
                 .endpoint(minioEndpoint)
                 .credentials(minioAccessKey, minioSecretKey)
                 .build();
-            minioClient.bucketExists(BucketExistsArgs.builder().bucket("docman-documents").build());
+            minioClient.listBuckets();
             log.info("[MinIO]         Connection: OK");
         } catch (Exception e) {
             log.warn("[MinIO]         Connection: FAILED - {}", e.getMessage());
