@@ -3,6 +3,7 @@ package com.docman.standalone.config;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.info.Contact;
+import org.springdoc.core.models.GroupedOpenApi;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -22,5 +23,13 @@ public class SwaggerConfig {
                         .contact(new Contact()
                                 .name("DocMan Team")
                                 .url("https://github.com/Anson201711/docman")));
+    }
+
+    @Bean
+    public GroupedOpenApi allApis() {
+        return GroupedOpenApi.builder()
+                .group("all")
+                .packagesToScan("com.docman")
+                .build();
     }
 }
