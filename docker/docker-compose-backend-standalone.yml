@@ -10,7 +10,7 @@ services:
   # -----------------------------------------
   nginx:
     build:
-      dockerfile: docker/nginx.standalone.conf
+      dockerfile: docker/Dockerfile-nginx
     container_name: docman-nginx
     ports:
       - "89:89"
@@ -25,9 +25,6 @@ services:
   # Backend - Standalone (All-in-One JAR)
   # -----------------------------------------
   backend:
-    build:
-      dockerfile: docker/Dockerfile-backend
-      target: runtime-standalone
     image: docman-backend-standalone:latest
     container_name: docman-backend
     ports:
