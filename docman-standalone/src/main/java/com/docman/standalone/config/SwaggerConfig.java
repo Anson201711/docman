@@ -26,10 +26,10 @@ public class SwaggerConfig {
     }
 
     @Bean
-    public GroupedOpenApi allApis() {
+    public GroupedOpenApi allOpenApi() {
         return GroupedOpenApi.builder()
                 .group("all")
-                .packagesToScan("com.docman")
+                .pathsToMatch("/**")
                 .build();
     }
 }
