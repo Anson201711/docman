@@ -8,6 +8,7 @@ services:
   # Nginx API Gateway (with Frontend)
   # -----------------------------------------
   nginx:
+    image: docman-nginx:latest
     container_name: docman-nginx
     ports:
       - "89:80"
