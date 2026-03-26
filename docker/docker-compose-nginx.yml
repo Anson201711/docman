@@ -11,7 +11,7 @@ services:
     image: docman-nginx:latest
     container_name: docman-nginx
     ports:
-      - "89:80"
+      - "89:89"
     networks:
       - docman-network
     restart: always
