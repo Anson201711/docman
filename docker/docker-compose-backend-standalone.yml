@@ -1,11 +1,27 @@
 # ============================================
 # DocMan Backend Standalone Only Docker Compose
-# Starts single fat JAR (all services in one JVM)
-# Does NOT start MySQL, Redis, Elasticsearch, MinIO, Frontend
-# External middleware required
+# Uses nginx as API gateway, backend on internal port
+# External middleware required (use docker-compose-middleware.yml)
 # ============================================
 
 services:
+  # -----------------------------------------
+  # Nginx API Gateway
+  # -----------------------------------------
+  nginx:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile-nginx
+    container_name: docman-nginx
+    ports:
+      - "9080:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - docman-network
+    restart: unless-stopped
+
   # -----------------------------------------
   # Backend - Standalone (All-in-One JAR)
   # -----------------------------------------
@@ -17,7 +33,7 @@ services:
     image: docman-backend-standalone:latest
     container_name: docman-backend
     ports:
-      - "9080:8080"
+      - "8081:8080"
     environment:
       - SERVICE_JAR=docman-standalone.jar
       - SPRING_PROFILES_ACTIVE=standalone

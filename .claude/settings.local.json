@@ -51,7 +51,9 @@
       "Bash(/Applications/Docker.app/Contents/Resources/bin/docker-compose -f /Users/infodba/Documents/01_codes/docman/docker/docker-compose-standalone.yml down docman-gateway 2>&1)",
       "Bash(/usr/local/bin/docker info:*)",
       "Bash(docker network:*)",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(git tag:*)",
+      "Bash(docker-compose:*)"
     ]
   }
 }
