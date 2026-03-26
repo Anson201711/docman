@@ -4,28 +4,19 @@
 
 services:
   frontend:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile-frontend
-      args:
-        NEXT_PUBLIC_API_BASE_URL: ${API_BASE_URL:-http://localhost:8080}
-        NEXT_PUBLIC_GATEWAY_URL: ${GATEWAY_URL:-http://localhost:8080}
-        BUILD_ENV: ${BUILD_ENV:-production}
+    image: docman-frontend:latest
     container_name: docman-frontend
     ports:
       - "3000:3000"
-    environment:
-      - NODE_ENV=production
     networks:
       - docman-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    restart: always
 
+# ============================================
+# Networks
+# ============================================
 networks:
   docman-network:
-    driver: bridge
+    external: true
+    name: docman-network
+
