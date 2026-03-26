@@ -53,7 +53,10 @@
       "Bash(docker network:*)",
       "Bash(git pull:*)",
       "Bash(git tag:*)",
-      "Bash(docker-compose:*)"
+      "Bash(docker-compose:*)",
+      "Bash(docker ps:*)",
+      "Bash(hdiutil info:*)",
+      "Bash(git status:*)"
     ]
   }
 }
