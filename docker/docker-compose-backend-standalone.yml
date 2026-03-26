@@ -11,7 +11,7 @@ services:
   nginx:
     build:
       context: ../..
-      dockerfile: docker/Dockerfile-nginx
+      dockerfile: docker/nginx.standalone.conf
     container_name: docman-nginx
     ports:
       - "9080:8080"
