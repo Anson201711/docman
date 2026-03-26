@@ -1,0 +1,3 @@
+com/docman/gateway/config/CorsFilter.class
+com/docman/gateway/filter/AuthFilter.class
+com/docman/gateway/application/GatewayApplication.class

@@ -1,0 +1,12 @@
+/Users/infodba/Documents/01_codes/docman/docman-common/src/main/java/com/docman/common/config/MybatisPlusConfig.java
+/Users/infodba/Documents/01_codes/docman/docman-common/src/main/java/com/docman/common/config/RedisConfig.java
+/Users/infodba/Documents/01_codes/docman/docman-common/src/main/java/com/docman/common/constant/Constants.java
+/Users/infodba/Documents/01_codes/docman/docman-common/src/main/java/com/docman/common/exception/BusinessException.java
+/Users/infodba/Documents/01_codes/docman/docman-common/src/main/java/com/docman/common/exception/GlobalExceptionHandler.java
+/Users/infodba/Documents/01_codes/docman/docman-common/src/main/java/com/docman/common/model/BaseEntity.java
+/Users/infodba/Documents/01_codes/docman/docman-common/src/main/java/com/docman/common/result/PageResult.java
+/Users/infodba/Documents/01_codes/docman/docman-common/src/main/java/com/docman/common/result/Result.java
+/Users/infodba/Documents/01_codes/docman/docman-common/src/main/java/com/docman/common/result/ResultCode.java
+/Users/infodba/Documents/01_codes/docman/docman-common/src/main/java/com/docman/common/util/IdUtil.java
+/Users/infodba/Documents/01_codes/docman/docman-common/src/main/java/com/docman/common/util/JwtUtil.java
+/Users/infodba/Documents/01_codes/docman/docman-common/src/main/java/com/docman/common/util/PageUtil.java
