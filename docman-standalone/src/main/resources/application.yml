@@ -76,9 +76,20 @@ spring.elasticsearch:
 
 # Springdoc OpenAPI
 springdoc:
-  api-docs:
-    path: /api-docs
-    enabled: true
   swagger-ui:
     path: /swagger-ui.html
-  show-actuator: false
+  api-docs:
+    enabled: true
+    path: /api-docs
+  packages-to-scan:
+    - com.docman.user
+    - com.docman.document
+    - com.docman.storage
+    - com.docman.search
+    - com.docman.version
+    - com.docman.classification
+    - com.docman.approval
+    - com.docman.subscription
+    - com.docman.collaboration
+    - com.docman.cad
+    - com.docman.system
