@@ -1,0 +1,24 @@
+# ============================================
+# DocMan Standalone Mode Docker Compose
+# Uses nginx as API gateway for simple routing
+# ============================================
+
+services:
+  # -----------------------------------------
+  # Nginx API Gateway (with Frontend)
+  # -----------------------------------------
+  nginx:
+    container_name: docman-nginx
+    ports:
+      - "89:80"
+    networks:
+      - docman-network
+    restart: always
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  docman-network:
+    external: true
+    name: docman-network
