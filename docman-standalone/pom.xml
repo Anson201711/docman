@@ -17,12 +17,6 @@
     <description>DocMan Standalone - All-in-One JAR with embedded services</description>
 
     <dependencies>
-        <!-- Gateway -->
-        <dependency>
-            <groupId>com.docman</groupId>
-            <artifactId>docman-gateway</artifactId>
-        </dependency>
-
         <!-- User Service -->
         <dependency>
             <groupId>com.docman</groupId>
