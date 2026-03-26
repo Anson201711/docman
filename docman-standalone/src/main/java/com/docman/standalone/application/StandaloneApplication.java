@@ -2,14 +2,14 @@ package com.docman.standalone.application;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.ApplicationListener;
+import org.springframework.context.annotation.Bean;
 import org.springframework.core.annotation.Order;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.boot.CommandLineRunner;
 import io.minio.MinioClient;
 import io.minio.params.bucket.BucketExistsArgs;
 
@@ -22,6 +22,31 @@ public class StandaloneApplication {
 
     private static final Logger log = LoggerFactory.getLogger(StandaloneApplication.class);
 
+    // Middleware connection config from application.yml
+    @Value("${spring.datasource.url:jdbc:mysql://localhost:3306/docman}")
+    private String mysqlUrl;
+
+    @Value("${spring.datasource.username:root}")
+    private String mysqlUsername;
+
+    @Value("${spring.data.redis.host:localhost}")
+    private String redisHost;
+
+    @Value("${spring.data.redis.port:6379}")
+    private int redisPort;
+
+    @Value("${minio.endpoint:http://localhost:9000}")
+    private String minioEndpoint;
+
+    @Value("${minio.access-key:minioadmin}")
+    private String minioAccessKey;
+
+    @Value("${minio.secret-key:minioadmin}")
+    private String minioSecretKey;
+
+    @Value("${spring.elasticsearch.uris:http://localhost:9200}")
+    private String elasticsearchUri;
+
     public static void main(String[] args) {
         printStartupBanner(args);
         SpringApplication.run(StandaloneApplication.class, args);
@@ -32,11 +57,6 @@ public class StandaloneApplication {
         log.info("===========================================");
         log.info("  DocMan Standalone - Starting");
         log.info("===========================================");
-        log.info("Gateway Port: 8080");
-        log.info("MySQL:        localhost:3306/docman");
-        log.info("Redis:         localhost:6379");
-        log.info("MinIO:         localhost:9000");
-        log.info("Elasticsearch: localhost:9200");
         log.info("");
     }
 
@@ -46,11 +66,23 @@ public class StandaloneApplication {
             RedisConnectionFactory redisFactory,
             ElasticsearchOperations esOps) {
         return args -> {
+            printMiddlewareInfo();
             checkRedis(redisFactory);
             checkMinIO();
             checkElasticsearch(esOps);
             printStartedBanner();
         };
+    }
+
+    private void printMiddlewareInfo() {
+        log.info("-------------------------------------------");
+        log.info("  Middleware Configuration");
+        log.info("-------------------------------------------");
+        log.info("MySQL:        {}", mysqlUrl);
+        log.info("Redis:        {}:{}", redisHost, redisPort);
+        log.info("MinIO:        {}", minioEndpoint);
+        log.info("Elasticsearch: {}", elasticsearchUri);
+        log.info("");
     }
 
     private void checkRedis(RedisConnectionFactory factory) {
@@ -65,8 +97,8 @@ public class StandaloneApplication {
     private void checkMinIO() {
         try {
             MinioClient minioClient = MinioClient.builder()
-                .endpoint("http://localhost:9000")
-                .credentials("minioadmin", "minioadmin")
+                .endpoint(minioEndpoint)
+                .credentials(minioAccessKey, minioSecretKey)
                 .build();
             minioClient.bucketExists(BucketExistsArgs.builder().bucket("docman-documents").build());
             log.info("[MinIO]         Connection: OK");
