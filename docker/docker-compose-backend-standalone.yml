@@ -6,22 +6,6 @@
 
 services:
   # -----------------------------------------
-  # Nginx API Gateway
-  # -----------------------------------------
-  nginx:
-    build:
-      dockerfile: docker/Dockerfile-nginx
-    container_name: docman-nginx
-    ports:
-      - "89:89"
-    depends_on:
-      backend:
-        condition: service_healthy
-    networks:
-      - docman-network
-    restart: unless-stopped
-
-  # -----------------------------------------
   # Backend - Standalone (All-in-One JAR)
   # -----------------------------------------
   backend:
