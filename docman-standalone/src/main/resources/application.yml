@@ -73,3 +73,13 @@ minio:
 # Elasticsearch
 spring.elasticsearch:
   uris: http://${ES_HOST:localhost}:${ES_PORT:9200}
+
+# Springdoc OpenAPI
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+    tagsSorter: alpha
+  show-actuator: false
