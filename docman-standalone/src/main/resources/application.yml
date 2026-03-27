@@ -68,7 +68,31 @@ minio:
   endpoint: http://${MINIO_HOST:localhost}:${MINIO_PORT:9000}
   access-key: ${MINIO_ACCESS_KEY:minioadmin}
   secret-key: ${MINIO_SECRET_KEY:minioadmin}
-  bucket: ${MINIO_BUCKET:docman-documents}
+  bucket-name: ${MINIO_BUCKET:docman-documents}
+  presigned-url-expiry: 3600
+
+# Storage
+storage:
+  default-quota: 10737418240
+  max-file-size: 1073741824
+  allowed-extensions:
+    - pdf
+    - doc
+    - docx
+    - xls
+    - xlsx
+    - ppt
+    - pptx
+    - txt
+    - md
+    - jpg
+    - jpeg
+    - png
+    - gif
+    - dwg
+    - dxf
+    - step
+    - stp
 
 # Elasticsearch
 spring.elasticsearch:

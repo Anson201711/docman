@@ -107,6 +107,8 @@ public class SearchServiceImpl implements SearchService {
     @Override
     public List<DocumentIndex> search(String keyword, int page, int size) {
         try {
+            ensureIndexExists();
+
             String cacheKey = SEARCH_CACHE_KEY + keyword + ":" + page + ":" + size;
 
             Object cached = redisTemplate.opsForValue().get(cacheKey);
@@ -173,6 +175,7 @@ public class SearchServiceImpl implements SearchService {
     @Override
     public Map<String, Long> getStatistics() {
         try {
+            ensureIndexExists();
             CountRequest request = CountRequest.of(c -> c.index(INDEX_NAME));
             long totalIndexed = elasticsearchClient.count(request).count();
 

@@ -176,6 +176,8 @@ public class StorageServiceImpl implements StorageService {
                     .bucketName(minioConfig.getBucketName())
                     .objectName(objectName)
                     .status(STATUS_UPLOADING)
+                    .createTime(LocalDateTime.now())
+                    .updateTime(LocalDateTime.now())
                     .expireTime(LocalDateTime.now().plusDays(7))
                     .build();
 
@@ -194,6 +196,8 @@ public class StorageServiceImpl implements StorageService {
                     .documentId(documentId)
                     .uploadId(fileId)
                     .status(STATUS_PENDING)
+                    .createTime(LocalDateTime.now())
+                    .updateTime(LocalDateTime.now())
                     .build();
 
             storageRecordMapper.insert(record);
@@ -550,6 +554,8 @@ public class StorageServiceImpl implements StorageService {
                     .maxQuota(storageConfig.getDefaultQuota())
                     .usedQuota(0L)
                     .active(1)
+                    .createTime(LocalDateTime.now())
+                    .updateTime(LocalDateTime.now())
                     .build();
             storageQuotaMapper.insert(quota);
         }
